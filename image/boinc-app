@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""Install and feed the Docker-based BOINC apps shipped with the boinc-stack image.
+
+Run inside the daemons container (as root via `podman exec` or as boincadm):
+
+    boinc-app list                 apps shipped in the image
+    boinc-app install <app>        register app, plan class, app version, templates, daemons
+    boinc-app submit <app> [N]     create N jobs (default 1)
+    boinc-app results <app>        show the result files collected by the assimilator
+
+An app lives in /usr/local/share/boinc-stack/apps/<app>/:
+    app.env              APP_NAME, APP_TITLE, APP_VERSION, PLAN_CLASS
+    plan_class.xml       <plan_class> block added to plan_class_spec.xml
+    files/               Dockerfile, main.sh, job.toml, ... (@APP_VERSION@ is substituted)
+    templates/in.xml     input template, templates/out.xml output template
+"""
+import hashlib
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+APPS_DIR = "/usr/local/share/boinc-stack/apps"
+WRAPPER = "/usr/local/lib/boinc-stack/docker_wrapper"
+PLATFORM = "x86_64-pc-linux-gnu"
+
+
+def die(msg):
+    print(f"boinc-app: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def drop_privileges():
+    """Re-run as boincadm so that all project files keep the right owner."""
+    if os.geteuid() == 0:
+        os.execvp("runuser", ["runuser", "-u", "boincadm", "--",
+                              "env", "HOME=/home/boincadm", "USER=boincadm",
+                              sys.executable, *sys.argv])
+
+
+def project_root():
+    project = os.environ.get("PROJECT") or die("PROJECT is not set")
+    root = f"/home/boincadm/projects/{project}"
+    if not os.path.isfile(os.path.join(root, "config.xml")):
+        die(f"project {project} not found in {root}")
+    return root
+
+
+def load_app(name):
+    d = os.path.join(APPS_DIR, name)
+    if not os.path.isfile(os.path.join(d, "app.env")):
+        die(f"unknown app '{name}' (see 'boinc-app list')")
+    env = {}
+    for line in open(os.path.join(d, "app.env"), encoding="utf-8"):
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            env[k.strip()] = v.strip()
+    for k in ("APP_NAME", "APP_TITLE", "APP_VERSION", "PLAN_CLASS"):
+        if not env.get(k):
+            die(f"{k} missing in {d}/app.env")
+    env["DIR"] = d
+    return env
+
+
+def run(cmd, root, stdin=None):
+    print("  $", " ".join(cmd))
+    r = subprocess.run(cmd, cwd=root, input=stdin, text=True)
+    if r.returncode != 0:
+        die(f"command failed ({r.returncode}): {' '.join(cmd)}")
+
+
+def sha8(path):
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()[:8]
+
+
+def ensure_plan_class(root, app):
+    path = os.path.join(root, "plan_class_spec.xml")
+    block = open(os.path.join(app["DIR"], "plan_class.xml"), encoding="utf-8").read().rstrip() + "\n"
+    if os.path.exists(path):
+        xml = open(path, encoding="utf-8").read()
+    else:
+        xml = "<plan_classes>\n</plan_classes>\n"
+    if re.search(r"<name>\s*%s\s*</name>" % re.escape(app["PLAN_CLASS"]), xml):
+        print(f"plan class {app['PLAN_CLASS']}: already present")
+        return
+    xml = xml.replace("</plan_classes>", block + "</plan_classes>")
+    open(path, "w", encoding="utf-8").write(xml)
+    print(f"plan class {app['PLAN_CLASS']}: added to plan_class_spec.xml")
+
+
+def ensure_app_in_project_xml(root, app):
+    path = os.path.join(root, "project.xml")
+    xml = open(path, encoding="utf-8").read()
+    if re.search(r"<name>\s*%s\s*</name>" % re.escape(app["APP_NAME"]), xml):
+        print(f"app {app['APP_NAME']}: already in project.xml")
+    else:
+        entry = ("    <app>\n"
+                 f"        <name>{app['APP_NAME']}</name>\n"
+                 f"        <user_friendly_name>{app['APP_TITLE']}</user_friendly_name>\n"
+                 "    </app>\n")
+        xml = xml.replace("</boinc>", entry + "</boinc>")
+        open(path, "w", encoding="utf-8").write(xml)
+        print(f"app {app['APP_NAME']}: added to project.xml")
+    run(["bin/xadd"], root)
+
+
+def build_app_version(root, app):
+    name, ver = app["APP_NAME"], app["APP_VERSION"]
+    vdir = os.path.join(root, "apps", name, ver, f"{PLATFORM}__{app['PLAN_CLASS']}")
+    if os.path.isdir(vdir):
+        print(f"app version {ver} ({app['PLAN_CLASS']}): directory exists, keeping it "
+              "(raise APP_VERSION to deploy changed files)")
+        return
+    os.makedirs(vdir)
+    # docker_wrapper: physical name carries a content hash, so different builds never collide
+    wrapper_name = f"docker_wrapper_{PLATFORM}_{sha8(WRAPPER)}"
+    shutil.copy2(WRAPPER, os.path.join(vdir, wrapper_name))
+    os.chmod(os.path.join(vdir, wrapper_name), 0o755)
+    files = [f'    <file>\n        <physical_name>{wrapper_name}</physical_name>\n'
+             '        <main_program/>\n    </file>\n']
+    for fn in sorted(os.listdir(os.path.join(app["DIR"], "files"))):
+        src = os.path.join(app["DIR"], "files", fn)
+        content = open(src, encoding="utf-8").read().replace("@APP_VERSION@", ver)
+        base, ext = os.path.splitext(fn)
+        phys = f"{name}_{ver}_{base}{ext}"
+        open(os.path.join(vdir, phys), "w", encoding="utf-8").write(content)
+        files.append(f'    <file>\n        <physical_name>{phys}</physical_name>\n'
+                     f'        <logical_name>{fn}</logical_name>\n        <copy_file/>\n    </file>\n')
+    open(os.path.join(vdir, "version.xml"), "w", encoding="utf-8").write(
+        "<version>\n" + "".join(files) + "</version>\n")
+    print(f"app version {ver} ({app['PLAN_CLASS']}): files prepared in {vdir}")
+    run(["bin/update_versions", "--noconfirm"], root)
+
+
+def install_templates(root, app):
+    for kind in ("in", "out"):
+        src = os.path.join(app["DIR"], "templates", f"{kind}.xml")
+        dst = os.path.join(root, "templates", f"{app['APP_NAME']}_{kind}")
+        shutil.copyfile(src, dst)
+    print(f"templates: templates/{app['APP_NAME']}_in, templates/{app['APP_NAME']}_out")
+
+
+def ensure_daemons(root, app):
+    """Trivial validator and sample assimilator per app (own log and pid names)."""
+    path = os.path.join(root, "config.xml")
+    xml = open(path, encoding="utf-8").read()
+    n = app["APP_NAME"]
+    wanted = [
+        ("sample_trivial_validator", f"validator_{n}"),
+        ("sample_assimilator", f"assimilator_{n}"),
+    ]
+    added = []
+    for prog, tag in wanted:
+        if f"{prog} --app {n}" in xml:
+            continue
+        entry = ("        <daemon>\n"
+                 f"            <cmd>{prog} --app {n}</cmd>\n"
+                 f"            <output>{tag}.log</output>\n"
+                 f"            <pid_file>{tag}.pid</pid_file>\n"
+                 "        </daemon>\n")
+        xml = xml.replace("</daemons>", entry + "    </daemons>", 1)
+        added.append(prog)
+    if added:
+        open(path, "w", encoding="utf-8").write(xml)
+        print(f"daemons: added {', '.join(added)}")
+    else:
+        print("daemons: already configured")
+
+
+def restart_daemons(root):
+    # the feeder only learns about new apps and app versions at startup
+    run(["bin/stop"], root)
+    time.sleep(2)
+    run(["bin/start"], root)
+
+
+def cmd_list():
+    for name in sorted(os.listdir(APPS_DIR)):
+        try:
+            app = load_app(name)
+        except SystemExit:
+            continue
+        print(f"{name:12} {app['APP_VERSION']:6} {app['PLAN_CLASS']:16} {app['APP_TITLE']}")
+
+
+def cmd_install(name):
+    root, app = project_root(), load_app(name)
+    if not os.path.isfile(WRAPPER):
+        die(f"{WRAPPER} missing in this image")
+    ensure_plan_class(root, app)
+    ensure_app_in_project_xml(root, app)
+    build_app_version(root, app)
+    install_templates(root, app)
+    ensure_daemons(root, app)
+    restart_daemons(root)
+    print(f"\n{name} installed. Create jobs with: boinc-app submit {name} [N]")
+
+
+def cmd_submit(name, count):
+    root, app = project_root(), load_app(name)
+    n = app["APP_NAME"]
+    if not os.path.isfile(os.path.join(root, "templates", f"{n}_in")):
+        die(f"{n} is not installed yet (boinc-app install {n})")
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    for i in range(count):
+        wu = f"{n}_{stamp}_{i}"
+        run(["bin/create_work", "--appname", n, "--wu_name", wu,
+             "--wu_template", f"templates/{n}_in",
+             "--result_template", f"templates/{n}_out"], root)
+    print(f"{count} job(s) created for {n}")
+
+
+def cmd_results(name):
+    root, app = project_root(), load_app(name)
+    rdir = os.path.join(root, "results")
+    found = False
+    for dirpath, _, files in sorted(os.walk(rdir)):
+        for fn in sorted(files):
+            if not fn.startswith(app["APP_NAME"] + "_"):
+                continue
+            found = True
+            path = os.path.join(dirpath, fn)
+            print(f"=== {os.path.relpath(path, root)}")
+            print(open(path, encoding="utf-8", errors="replace").read().rstrip())
+    if not found:
+        print(f"no results for {app['APP_NAME']} in {rdir} yet")
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        return
+    drop_privileges()
+    cmd = args[0]
+    if cmd == "list":
+        cmd_list()
+    elif cmd == "install" and len(args) == 2:
+        cmd_install(args[1])
+    elif cmd == "submit" and len(args) in (2, 3):
+        cmd_submit(args[1], int(args[2]) if len(args) == 3 else 1)
+    elif cmd == "results" and len(args) == 2:
+        cmd_results(args[1])
+    else:
+        print(__doc__)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

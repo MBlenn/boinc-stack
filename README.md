@@ -98,6 +98,12 @@ The project name and copyright holder shown on the website come from `PROJECT_LO
 Project files (`apps/`, `config.xml`, `html/project/`) live in `/srv/boinc/<project>/boinc/<project>/`.
 They belong to the project user and can be edited directly, e.g. via SFTP.
 
+## Docker apps
+
+The image ships `docker_wrapper` and the tool `boinc-app` to deploy container-based BOINC
+apps into a project. The example app `gpucheck` reports whether an NVIDIA GPU is visible inside
+the container on the volunteer's host. See [docs/docker-apps.md](docs/docker-apps.md).
+
 ## Status
 
 First draft. Tested locally: BOINC 1.6.2 builds; `make_project`, daemons, web and ops login,

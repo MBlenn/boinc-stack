@@ -1,0 +1,4 @@
+# docker_wrapper configuration
+use_gpu = true
+# fixed image name: built once per host and reused by all gpucheck jobs of this version
+image_name = "boinc-stack-gpucheck:@APP_VERSION@"
