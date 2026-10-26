@@ -86,6 +86,16 @@ fi
 USER_UID="$(id -u "${USER_NAME}")"
 USER_HOME="$(getent passwd "${USER_NAME}" | cut -d: -f6)"
 loginctl enable-linger "${USER_NAME}"
+# su/sudo -i do not create a login session: let systemctl --user and podman find the user bus anyway
+BASHRC="$(getent passwd "${USER_NAME}" | cut -d: -f6)/.bashrc"
+if ! grep -qs 'XDG_RUNTIME_DIR' "${BASHRC}"; then
+    cat >> "${BASHRC}" <<'EOF_RC'
+
+# boinc-stack: user systemd/podman also work after "su -" or "sudo -iu"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+EOF_RC
+    chown "${USER_NAME}:${USER_NAME}" "${BASHRC}"
+fi
 
 # --- data directory + secrets
 mkdir -p "${DATA_DIR}/db" "${DATA_DIR}/boinc"
