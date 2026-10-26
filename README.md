@@ -52,6 +52,10 @@ machinectl shell boinc-test1@
 journalctl --user -u test1-daemons -f
 ```
 
+**Status of all projects:** rootless containers belong to their project users, so `podman ps`
+as root shows nothing. `scripts/status.sh` lists the containers of every project
+(`-a` includes stopped ones, a project name limits the output to that project).
+
 **Removing a project** (e.g. after a misconfigured test) deletes its user, containers, Caddy
 site and data directory. `--keep-data` moves the data to `/srv/boinc/_removed/` instead:
 
