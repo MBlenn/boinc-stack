@@ -3,7 +3,7 @@
 #   - Linux user boinc-<shortname> with rootless Podman (linger on, units run without login)
 #   - data directory /srv/boinc/<shortname>/{db,boinc} + env files with random passwords
 #   - Quadlet units (network, db, web, daemons) in the project user's systemd user instance
-#   - Caddy site /etc/caddy/sites/<shortname>.caddy
+#   - Caddy configuration via caddy-sync.sh (projects sharing a site address are routed by path)
 #
 # Examples:
 #   ./new-project.sh -n rkfold -l "Rechenkraft Folding" \
@@ -14,7 +14,6 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TEMPLATE_DIR="${REPO_DIR}/project-template"
 DATA_ROOT="${DATA_ROOT:-/srv/boinc}"
-CADDY_SITES="${CADDY_SITES:-/etc/caddy/sites}"
 BOINC_IMAGE="${BOINC_IMAGE:-ghcr.io/mblenn/boinc-server:1.6.2}"
 MARIADB_IMAGE="${MARIADB_IMAGE:-docker.io/library/mariadb:12.3}"
 
@@ -27,6 +26,7 @@ Usage: $0 -n SHORTNAME -l LONGNAME -u URL_BASE -s SITE_ADDRESS [-p WEB_PORT] [-b
   -u  URL_BASE under which clients reach the project, e.g. https://rkfold.example.org/
       The master URL becomes URL_BASE/<shortname>/  (do not change it once in production!)
   -s  Caddy site address, e.g. rkfold.example.org (automatic TLS) or http://192.0.2.10
+      Several projects may share one address; they are told apart by their URL path.
   -p  local port for the web container (default: next free port from 18081)
   -b  IP that Caddy binds to for this project (optional)
   --no-start  only create the units, do not start them
@@ -130,18 +130,8 @@ envsubst "$VARS" < "${TEMPLATE_DIR}/quadlet/web.container"     > "${QUADLET_DIR}
 envsubst "$VARS" < "${TEMPLATE_DIR}/quadlet/daemons.container" > "${QUADLET_DIR}/${PROJECT}-daemons.container"
 chown -R "${USER_NAME}:${USER_NAME}" "${USER_HOME}/.config"
 
-# --- Caddy site
-if [ -d "${CADDY_SITES}" ]; then
-    if [ -n "${BIND_IP}" ]; then BIND_LINE="	bind ${BIND_IP}"; else BIND_LINE=""; fi
-    export BIND_LINE
-    envsubst '${PROJECT} ${WEB_PORT} ${SITE_ADDRESS} ${BIND_LINE}' \
-        < "${TEMPLATE_DIR}/caddy-site.template" > "${CADDY_SITES}/${PROJECT}.caddy"
-    if systemctl is-active --quiet caddy; then
-        caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null && systemctl reload caddy
-    fi
-else
-    echo "WARNING: ${CADDY_SITES} missing, Caddy site not created (see proxy/README.md)"
-fi
+# --- Caddy: projects with the same site address share one site, routed by path
+"${REPO_DIR}/scripts/caddy-sync.sh" || echo "WARNING: Caddy configuration not updated (see above)"
 
 # --- load and start the units (in the project user's systemd user instance)
 user_systemctl() {

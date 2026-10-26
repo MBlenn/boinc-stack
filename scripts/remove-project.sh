@@ -1,7 +1,7 @@
 #!/bin/bash
 # Removes a BOINC project created by new-project.sh (run as root):
 #   - stops the project's units and removes containers, images and networks of the project user
-#   - removes the Caddy site and reloads Caddy
+#   - removes its routes from the Caddy configuration (caddy-sync.sh)
 #   - deletes the Linux user boinc-<project> including its home directory
 #   - deletes /srv/boinc/<project> (database, project directory, backups)
 #     or, with --keep-data, moves it to /srv/boinc/_removed/<project>-<timestamp>
@@ -13,7 +13,6 @@
 set -euo pipefail
 
 DATA_ROOT="${DATA_ROOT:-/srv/boinc}"
-CADDY_SITES="${CADDY_SITES:-/etc/caddy/sites}"
 
 usage() {
     cat <<EOF
@@ -48,14 +47,14 @@ fi
 
 USER_EXISTS=0
 id "${USER_NAME}" >/dev/null 2>&1 && USER_EXISTS=1
-if [ "$USER_EXISTS" -eq 0 ] && [ ! -e "${DATA_DIR}" ] && [ ! -e "${CADDY_SITES}/${PROJECT}.caddy" ]; then
-    echo "Nothing found for project '${PROJECT}' (no user ${USER_NAME}, no ${DATA_DIR}, no Caddy site)."
+if [ "$USER_EXISTS" -eq 0 ] && [ ! -e "${DATA_DIR}" ]; then
+    echo "Nothing found for project '${PROJECT}' (no user ${USER_NAME}, no ${DATA_DIR})."
     exit 0
 fi
 
 echo "This removes project '${PROJECT}':"
 [ "$USER_EXISTS" -eq 1 ] && echo "  - user ${USER_NAME} with all its containers, images and home directory"
-[ -e "${CADDY_SITES}/${PROJECT}.caddy" ] && echo "  - Caddy site ${CADDY_SITES}/${PROJECT}.caddy"
+echo "  - its routes in the Caddy configuration"
 if [ -e "${DATA_DIR}" ]; then
     if [ "$KEEP_DATA" -eq 1 ]; then
         echo "  - ${DATA_DIR} is MOVED to ${DATA_ROOT}/_removed/"
@@ -109,14 +108,6 @@ if [ "$USER_EXISTS" -eq 1 ]; then
     esac
 fi
 
-# --- Caddy site
-if [ -e "${CADDY_SITES}/${PROJECT}.caddy" ]; then
-    echo "==> removing Caddy site"
-    rm -f "${CADDY_SITES}/${PROJECT}.caddy"
-    if systemctl is-active --quiet caddy; then
-        caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null && systemctl reload caddy
-    fi
-fi
 
 # --- data directory
 if [ -e "${DATA_DIR}" ]; then
@@ -132,5 +123,9 @@ if [ -e "${DATA_DIR}" ]; then
         rm -rf "${DATA_DIR}"
     fi
 fi
+
+# --- Caddy: regenerate without this project
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+"${REPO_DIR}/scripts/caddy-sync.sh" || echo "WARNING: Caddy configuration not updated (see above)"
 
 echo "Project ${PROJECT} removed."
