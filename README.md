@@ -86,6 +86,11 @@ podman exec -it <project>-daemons entrypoint.sh shell  # shell as boincadm in th
 #   -> bin/status, bin/stop, bin/start, bin/xadd, bin/update_versions, bin/create_work ...
 ```
 
+The project name and copyright holder shown on the website come from `PROJECT_LONGNAME` and
+`PROJECT_COPYRIGHT` in `/srv/boinc/<project>/boinc.env`. They are written into
+`html/project/project.inc` when the project is created. After changing them, apply them with
+`podman exec <project>-daemons entrypoint.sh set-names`.
+
 Project files (`apps/`, `config.xml`, `html/project/`) live in `/srv/boinc/<project>/boinc/<project>/`.
 They belong to the project user and can be edited directly, e.g. via SFTP.
 

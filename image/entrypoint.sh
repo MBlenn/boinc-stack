@@ -4,6 +4,7 @@
 #   daemons  creates the project on first start, runs the upgrade when the image carries a
 #            newer BOINC release, then runs the BOINC daemons (bin/start, --cron every 5 min)
 #   shell    interactive shell as boincadm in the project directory
+#   set-names  write PROJECT_LONGNAME / PROJECT_COPYRIGHT into html/project/project.inc
 #   *        any other command
 set -euo pipefail
 
@@ -53,6 +54,25 @@ db_dump() {
     log "DB dump written: ${target}"
 }
 
+# make_project leaves placeholders in html/project/project.inc; fill in name and copyright holder
+set_project_names() {
+    local inc="${PROOT}/html/project/project.inc"
+    [ -f "${inc}" ] || return 0
+    as_boinc env NAME="${PROJECT_LONGNAME:-${PROJECT}}" \
+        HOLDER="${PROJECT_COPYRIGHT:-${PROJECT_LONGNAME:-${PROJECT}}}" INC="${inc}" python3 - <<'PY'
+import os, re
+def php(s):
+    return s.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$')
+p = os.environ["INC"]
+src = open(p, encoding="utf-8").read()
+for key, env in (("PROJECT", "NAME"), ("COPYRIGHT_HOLDER", "HOLDER")):
+    src = re.sub(r'define\("%s",\s*"[^"]*"\);' % key,
+                 lambda m: 'define("%s", "%s");' % (key, php(os.environ[env])), src, count=1)
+open(p, "w", encoding="utf-8").write(src)
+PY
+    log "project.inc: name and copyright holder set"
+}
+
 init_project() {
     : "${URL_BASE:?URL_BASE must be set, e.g. https://project.example.org/}"
     : "${DB_PASSWORD:?DB_PASSWORD/MARIADB_PASSWORD must be set}"
@@ -79,6 +99,8 @@ init_project() {
     else
         log "WARNING: OPS_USER/OPS_PASSWORD not set, ops pages have no login"
     fi
+
+    set_project_names
 
     echo "${IMAGE_REF}" | as_boinc tee "${PROOT}/.boinc_image_ref" >/dev/null
     log "project created."
@@ -164,5 +186,6 @@ case "${ROLE}" in
     web)     role_web ;;
     daemons) role_daemons ;;
     shell)   cd "${PROOT}" 2>/dev/null || true; exec runuser -u boincadm -- bash -l ;;
+    set-names) set_project_names ;;
     *)       exec "${ROLE}" "$@" ;;
 esac
