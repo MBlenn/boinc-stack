@@ -1,0 +1,28 @@
+[Unit]
+Description=BOINC ${PROJECT}: web (Apache/PHP, scheduler, upload handler)
+Requires=${PROJECT}-db.service
+After=${PROJECT}-db.service
+
+[Container]
+ContainerName=${PROJECT}-web
+Image=${BOINC_IMAGE}
+Exec=web
+Network=${PROJECT}.network
+EnvironmentFile=${DATA_DIR}/boinc.env
+Volume=${DATA_DIR}/boinc:/home/boincadm/projects
+# localhost only: reachable exclusively through the host's reverse proxy
+PublishPort=127.0.0.1:${WEB_PORT}:8080
+# boincadm (UID 1000 in the container) = project user on the host -> files belong to it.
+# --user=0:0: the entrypoint starts as (namespace) root and drops to boincadm itself.
+# Shareable IPC: the scheduler (here) reads the feeder's shared memory (daemons).
+PodmanArgs=--userns=keep-id:uid=1000,gid=1000 --user=0:0 --ipc=shareable
+
+# Pick up rebuilt images under the same tag (weekly rebuild) via podman-auto-update.timer
+AutoUpdate=registry
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target

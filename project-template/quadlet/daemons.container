@@ -1,0 +1,30 @@
+[Unit]
+Description=BOINC ${PROJECT}: daemons (feeder, transitioner, validator, ...)
+Requires=${PROJECT}-db.service ${PROJECT}-web.service
+After=${PROJECT}-db.service ${PROJECT}-web.service
+# Shares the IPC namespace with web: when web restarts, daemons must restart too
+BindsTo=${PROJECT}-web.service
+
+[Container]
+ContainerName=${PROJECT}-daemons
+Image=${BOINC_IMAGE}
+Exec=daemons
+Network=${PROJECT}.network
+EnvironmentFile=${DATA_DIR}/boinc.env
+Volume=${DATA_DIR}/boinc:/home/boincadm/projects
+# Join the user and IPC namespaces of web: same UID mapping (keep-id) and
+# shared memory between the feeder (here) and the scheduler (web).
+# Fixed hostname: must match <host> in config.xml (bin/start).
+PodmanArgs=--userns=container:${PROJECT}-web --user=0:0 --ipc=container:${PROJECT}-web --hostname=${PROJECT}-daemons
+
+# Pick up rebuilt images under the same tag (weekly rebuild) via podman-auto-update.timer
+AutoUpdate=registry
+
+[Service]
+Restart=always
+# Initial project creation or an upgrade (incl. DB dump) can take a while
+TimeoutStartSec=900
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target ${PROJECT}-web.service

@@ -1,0 +1,4 @@
+# Internal network of project ${PROJECT}: db, web and daemons reach each other by
+# container name (${PROJECT}-db etc.). Other projects cannot see this network.
+[Network]
+NetworkName=${PROJECT}

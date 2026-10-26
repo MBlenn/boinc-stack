@@ -1,0 +1,8 @@
+# Central reverse proxy for all BOINC projects on this host.
+# Installation: see proxy/README.md
+{
+	# Email for Let's Encrypt (expiry notices)
+	# email admin@example.org
+}
+
+import /etc/caddy/sites/*.caddy

@@ -1,0 +1,68 @@
+name: build-image
+
+# Builds the BOINC server image and pushes it to GHCR.
+# - on changes under image/ on main
+# - weekly (Debian/Apache/PHP security updates land in the image automatically)
+# - manually, optionally with a different BOINC release
+on:
+  push:
+    branches: [main]
+    paths: ["image/**", ".github/workflows/build-image.yml"]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      boinc_version:
+        description: "BOINC server release (e.g. 1.6.2)"
+        required: false
+
+env:
+  BOINC_VERSION: "1.6.2"   # default release; bump here to upgrade
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parameters
+        id: p
+        run: |
+          v="${{ github.event.inputs.boinc_version }}"
+          v="${v:-$BOINC_VERSION}"
+          minor="${v%.*}"
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "ref=server_release/${minor}/${v}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${owner}/boinc-server" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: image
+          file: image/Containerfile
+          pull: true
+          push: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          build-args: |
+            BOINC_REF=${{ steps.p.outputs.ref }}
+          tags: |
+            ${{ steps.p.outputs.image }}:${{ steps.p.outputs.version }}
+            ${{ steps.p.outputs.image }}:${{ steps.p.outputs.version }}-${{ steps.p.outputs.date }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=BOINC server ${{ steps.p.outputs.version }} (Debian trixie, Apache, PHP)
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

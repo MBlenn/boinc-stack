@@ -1,0 +1,26 @@
+[Unit]
+Description=BOINC ${PROJECT}: MariaDB
+
+[Container]
+ContainerName=${PROJECT}-db
+Image=${MARIADB_IMAGE}
+Network=${PROJECT}.network
+EnvironmentFile=${DATA_DIR}/boinc.env
+EnvironmentFile=${DATA_DIR}/db-root.env
+# Upgrade the system tables automatically after the image tag changes
+Environment=MARIADB_AUTO_UPGRADE=1
+# :U = chown the directory to the mysql user inside the container (rootless)
+Volume=${DATA_DIR}/db:/var/lib/mysql:U
+HealthCmd=healthcheck.sh --connect --innodb_initialized
+HealthInterval=30s
+# No PublishPort: the database is only reachable on the project network
+
+# Pick up rebuilt images under the same tag via podman-auto-update.timer
+AutoUpdate=registry
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

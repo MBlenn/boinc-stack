@@ -1,0 +1,75 @@
+# BOINC server image for the roles "web" (Apache/PHP/scheduler) and "daemons".
+# Base: Debian 13 (trixie). Apache and PHP come from Debian, so their security updates
+# land in the image with every rebuild.
+
+ARG DEBIAN_TAG=trixie-slim
+
+# ---------------------------------------------------------------- build stage
+FROM docker.io/library/debian:${DEBIAN_TAG} AS build
+
+ARG BOINC_REF=server_release/1.6/1.6.2
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential autoconf automake libtool m4 pkg-config git ca-certificates file \
+        libmariadb-dev libmariadb-dev-compat libssl-dev libcurl4-openssl-dev zlib1g-dev \
+        nlohmann-json3-dev libzip-dev python3 python-is-python3 python3-setuptools \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch "${BOINC_REF}" https://github.com/BOINC/boinc.git /usr/local/src/boinc
+
+WORKDIR /usr/local/src/boinc
+RUN ./_autosetup \
+    && ./configure --enable-server --disable-client --disable-manager --disable-fcgi \
+    && make -j"$(nproc)" \
+    && echo "${BOINC_REF}" > /usr/local/src/boinc/BOINC_REF
+
+# Determine the runtime libraries of the built binaries (instead of maintaining package names by hand)
+RUN find sched tools lib -maxdepth 1 -type f -executable \
+        -exec sh -c 'file -b "$1" | grep -q ELF && ldd "$1"' _ {} \; 2>/dev/null \
+    | awk '/=> \// {print $3}' | sort -u \
+    | while read -r l; do dpkg -S "$l" 2>/dev/null || dpkg -S "$(realpath "$l")" 2>/dev/null || dpkg -S "/usr$l" 2>/dev/null; done \
+    | cut -d: -f1 | sort -u > /runtime-packages.txt \
+    && cat /runtime-packages.txt
+
+# ---------------------------------------------------------------- runtime stage
+FROM docker.io/library/debian:${DEBIAN_TAG}
+
+ENV DEBIAN_FRONTEND=noninteractive
+COPY --from=build /runtime-packages.txt /tmp/runtime-packages.txt
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        apache2 apache2-utils libapache2-mod-php \
+        php-cli php-mysql php-gd php-xml php-mbstring php-curl php-zip \
+        python3 python-is-python3 python3-mysqldb mariadb-client \
+        ca-certificates curl procps tini \
+        $(cat /tmp/runtime-packages.txt) \
+    && rm -rf /var/lib/apt/lists/* /tmp/runtime-packages.txt
+
+# Project user. UID/GID 1000 are mapped to the project user on the host
+# via "--userns=keep-id:uid=1000,gid=1000".
+RUN groupadd -g 1000 boincadm \
+    && useradd -m -u 1000 -g 1000 -s /bin/bash boincadm
+
+# Built source tree: needed by make_project and tools/upgrade as --srcdir
+COPY --from=build /usr/local/src/boinc /usr/local/src/boinc
+
+# Apache: port 8080, prefork + mod_php, CGI for scheduler/upload handler, real client IP from the proxy
+COPY apache/ports.conf /etc/apache2/ports.conf
+COPY apache/boinc-base.conf /etc/apache2/conf-available/boinc-base.conf
+RUN a2dissite 000-default \
+    && a2dismod -f mpm_event mpm_worker 2>/dev/null || true
+RUN a2enmod mpm_prefork cgi remoteip headers rewrite expires \
+    && a2enconf boinc-base \
+    && ln -sf /dev/stdout /var/log/apache2/access.log \
+    && ln -sf /dev/stderr /var/log/apache2/error.log
+
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENV PROJECT_ROOT=/home/boincadm/project \
+    BOINC_SRC=/usr/local/src/boinc
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
+CMD ["web"]
