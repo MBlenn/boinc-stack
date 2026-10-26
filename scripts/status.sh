@@ -31,7 +31,7 @@ for conf in "${DATA_ROOT}"/*/project.conf; do
         echo "    user ${USER_NAME} does not exist"
         continue
     fi
-    runuser -u "$USER_NAME" -- env XDG_RUNTIME_DIR="/run/user/${uid}" \
+    runuser -u "$USER_NAME" -- env XDG_RUNTIME_DIR="/run/user/${uid}" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus" \
         podman ps ${ALL} --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" \
         || echo "    podman not reachable for ${USER_NAME} (linger enabled?)"
     echo

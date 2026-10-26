@@ -73,7 +73,7 @@ if [ "$USER_EXISTS" -eq 1 ]; then
     USER_UID="$(id -u "${USER_NAME}")"
     USER_HOME="$(getent passwd "${USER_NAME}" | cut -d: -f6)"
     as_user() {
-        runuser -u "${USER_NAME}" -- env XDG_RUNTIME_DIR="/run/user/${USER_UID}" "$@"
+        runuser -u "${USER_NAME}" -- env XDG_RUNTIME_DIR="/run/user/${USER_UID}" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${USER_UID}/bus" "$@"
     }
 
     if [ -S "/run/user/${USER_UID}/bus" ]; then

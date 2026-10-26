@@ -20,7 +20,7 @@ for conf in "${DATA_ROOT}"/*/project.conf; do
     install -d -o "$USER_NAME" -g "$USER_NAME" -m 750 "$dir"
     out="${dir}/db-$(date +%Y%m%d-%H%M%S).sql.gz"
     echo "==> ${PROJECT}: ${out}"
-    runuser -u "$USER_NAME" -- env XDG_RUNTIME_DIR="/run/user/${uid}" \
+    runuser -u "$USER_NAME" -- env XDG_RUNTIME_DIR="/run/user/${uid}" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus" \
         podman exec "${PROJECT}-db" sh -c \
         'mariadb-dump -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" --single-transaction --routines --triggers "$MARIADB_DATABASE"' \
         | gzip > "${out}.tmp"
