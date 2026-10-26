@@ -52,6 +52,16 @@ machinectl shell boinc-test1@
 journalctl --user -u test1-daemons -f
 ```
 
+**Removing a project** (e.g. after a misconfigured test) deletes its user, containers, Caddy
+site and data directory. `--keep-data` moves the data to `/srv/boinc/_removed/` instead:
+
+```bash
+/opt/boinc-stack/scripts/remove-project.sh -n test1
+```
+
+The URL base (`-u`) is written into the project configuration on first start. If it was
+wrong, remove the project and create it again.
+
 **Image access:** If the GHCR package `boinc-server` is private, every project user has to
 log in once with `podman login ghcr.io`, using a PAT with the `read:packages` scope. It is
 simpler to set the package to *public* in the GitHub package settings. The image contains

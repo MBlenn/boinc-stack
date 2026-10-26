@@ -51,7 +51,7 @@ done
 
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root."; exit 1; }
 [ -n "$PROJECT" ] && [ -n "$PROJECT_LONGNAME" ] && [ -n "$URL_BASE" ] && [ -n "$SITE_ADDRESS" ] || usage
-[[ "$PROJECT" =~ ^[a-z][a-z0-9]{1,15}$ ]] || { echo "Invalid short name: $PROJECT"; exit 1; }
+[[ "$PROJECT" =~ ^[a-z][a-z0-9]{1,15}$ ]] || { echo "Invalid short name: $PROJECT (allowed: lowercase letters a-z and digits, 2-16 chars, starting with a letter, e.g. p3dtest1)"; exit 1; }
 for cmd in podman envsubst openssl loginctl; do
     command -v "$cmd" >/dev/null || { echo "Missing: $cmd (apt install podman gettext-base openssl)"; exit 1; }
 done
