@@ -14,6 +14,11 @@ It is designed to keep maintenance effort low.
 
 ![Architecture: two BOINC projects on one host](docs/architecture.svg)
 
+Planned variant: the public edge runs on a VPS (Caddy with TLS), and the BOINC host sits at
+home behind Tailscale without any open ports. See
+[docs/architecture-tunnel.svg](docs/architecture-tunnel.svg). The Caddy edge mode for this
+is not implemented yet.
+
 ## Host directories
 
 | Path | Contents |

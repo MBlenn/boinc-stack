@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1000" viewBox="0 0 1680 1000" font-family="Helvetica, Arial, sans-serif" font-size="13">
+<defs>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker>
+<marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+<style>.t{fill:#0f172a}.s{fill:#475569;font-size:11.5px}.hs{font-weight:700;font-size:12.5px;fill:#334155}
+.ln{stroke:#334155;stroke-width:1.6;fill:none}.dl{stroke:#64748b;stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+.lb{font-size:11.5px;fill:#1e293b}</style></defs>
+<rect width="1680" height="1000" fill="#fff"/>
+<text x="20" y="30" style="font-size:18px;font-weight:700;fill:#0f172a">boinc-stack: public edge on a VPS, BOINC host behind Tailscale</text>
+<rect x="20" y="60" width="210" height="880" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="125" y="84" text-anchor="middle" class="hs">Internet</text>
+<rect x="40" y="120" width="170" height="62" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="125.0" y="147.0" text-anchor="middle" class="hs">BOINC clients</text>
+<text x="125.0" y="163.0" text-anchor="middle" class="s">volunteers</text>
+<rect x="40" y="230" width="170" height="62" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="125.0" y="257.0" text-anchor="middle" class="hs">Browsers</text>
+<text x="125.0" y="273.0" text-anchor="middle" class="s">website, forum</text>
+<rect x="40" y="780" width="170" height="62" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="125.0" y="807.0" text-anchor="middle" class="hs">Admins</text>
+<text x="125.0" y="823.0" text-anchor="middle" class="s">tech admin, project admins</text>
+<rect x="40" y="370" width="170" height="250" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="125" y="392" text-anchor="middle" class="hs">DNS</text>
+<text x="125" y="425" text-anchor="middle" class="hs">rkfold.rechenkraft.net</text>
+<text x="125" y="442" text-anchor="middle" class="s">A/AAAA → VPS</text>
+<text x="125" y="476" text-anchor="middle" class="hs">kifold.kerbodyne.com</text>
+<text x="125" y="493" text-anchor="middle" class="s">A/AAAA → VPS</text>
+<text x="125" y="527" text-anchor="middle" class="s">or CNAME to the</text>
+<text x="125" y="544" text-anchor="middle" class="s">VPS host name</text>
+<rect x="270" y="60" width="370" height="560" rx="12" fill="#fffdf5" stroke="#a3a3a3" stroke-width="1.5"/>
+<text x="455" y="84" text-anchor="middle" class="hs">VPS  (fixed public IP)</text>
+<rect x="295" y="110" width="320" height="190" rx="6" fill="#ffedd5" stroke="#ea580c" stroke-width="1.5"/>
+<text x="455.0" y="161.0" text-anchor="middle" class="hs">Caddy  (public edge, root)</text>
+<text x="455.0" y="177.0" text-anchor="middle" class="s">only public ports :80 / :443</text>
+<text x="455.0" y="193.0" text-anchor="middle" class="s">TLS: Let's Encrypt for both domains</text>
+<text x="455.0" y="209.0" text-anchor="middle" class="s">rkfold.rechenkraft.net, kifold.kerbodyne.com</text>
+<text x="455.0" y="225.0" text-anchor="middle" class="s">→ reverse_proxy 100.64.0.2:80</text>
+<text x="455.0" y="241.0" text-anchor="middle" class="s">(Host header passed through)</text>
+<text x="455.0" y="257.0" text-anchor="middle" class="s">later: rate limits, download cache</text>
+<rect x="295" y="330" width="320" height="80" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+<text x="455.0" y="366.0" text-anchor="middle" class="hs">Tailscale node</text>
+<text x="455.0" y="382.0" text-anchor="middle" class="s">100.64.0.1</text>
+<rect x="295" y="440" width="320" height="70" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="455.0" y="471.0" text-anchor="middle" class="hs">no project data</text>
+<text x="455.0" y="487.0" text-anchor="middle" class="s">replaceable: new VPS + DNS change</text>
+<rect x="295" y="530" width="320" height="70" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="455.0" y="561.0" text-anchor="middle" class="hs">optional: Headscale</text>
+<text x="455.0" y="577.0" text-anchor="middle" class="s">(self-hosted Tailscale control server)</text>
+<rect x="648" y="300" width="144" height="160" rx="10" fill="#f0f9ff" stroke="#0284c7" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="720" y="330" text-anchor="middle" class="hs">Tailscale</text>
+<text x="720" y="346" text-anchor="middle" class="s">(WireGuard)</text>
+<text x="720" y="375" text-anchor="middle" class="s">started from the</text>
+<text x="720" y="389" text-anchor="middle" class="s">BOINC host:</text>
+<text x="720" y="403" text-anchor="middle" class="s">no open ports,</text>
+<text x="720" y="417" text-anchor="middle" class="s">no port forwarding,</text>
+<text x="720" y="431" text-anchor="middle" class="s">changing IP is fine</text>
+<rect x="800" y="60" width="860" height="880" rx="12" fill="#fffdf5" stroke="#a3a3a3" stroke-width="1.5"/>
+<text x="1230" y="84" text-anchor="middle" class="hs">BOINC host  (home server, Ubuntu, Podman)</text>
+<rect x="830" y="110" width="330" height="150" rx="6" fill="#ffedd5" stroke="#ea580c" stroke-width="1.5"/>
+<text x="995.0" y="149.0" text-anchor="middle" class="hs">Caddy  (internal, root)</text>
+<text x="995.0" y="165.0" text-anchor="middle" class="s">listens only on 100.64.0.2:80 (Tailscale)</text>
+<text x="995.0" y="181.0" text-anchor="middle" class="s">no own TLS (done on the VPS)</text>
+<text x="995.0" y="197.0" text-anchor="middle" class="s">routes by host name and path</text>
+<text x="995.0" y="213.0" text-anchor="middle" class="s">trusted_proxies 100.64.0.0/10</text>
+<text x="995.0" y="229.0" text-anchor="middle" class="s">generated by scripts/caddy-sync.sh</text>
+<rect x="830" y="290" width="330" height="70" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+<text x="995.0" y="321.0" text-anchor="middle" class="hs">Tailscale node</text>
+<text x="995.0" y="337.0" text-anchor="middle" class="s">100.64.0.2</text>
+<rect x="1190" y="110" width="440" height="70" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="1410.0" y="141.0" text-anchor="middle" class="hs">Registries</text>
+<text x="1410.0" y="157.0" text-anchor="middle" class="s">ghcr.io/mblenn/boinc-server · docker.io/library/mariadb</text>
+<text x="1410" y="200" text-anchor="middle" class="s">pulled by each project user (podman-auto-update.timer)</text>
+<rect x="850" y="390" width="780" height="250" rx="10" fill="#fefce8" stroke="#ca8a04" stroke-width="1.5"/>
+<text x="870" y="412" text-anchor="start" class="hs">Linux user boinc-rkfold  ·  rootless Podman  ·  network "rkfold"</text>
+<text x="870" y="430" class="s">master URL https://rkfold.rechenkraft.net/rkfold/</text>
+<rect x="870" y="450" width="170" height="85" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+<text x="955.0" y="480.5" text-anchor="middle" class="hs">rkfold-web</text>
+<text x="955.0" y="496.5" text-anchor="middle" class="s">Apache, PHP, scheduler</text>
+<text x="955.0" y="512.5" text-anchor="middle" class="s">127.0.0.1:18081</text>
+<rect x="1065" y="450" width="170" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1150.0" y="480.5" text-anchor="middle" class="hs">rkfold-daemons</text>
+<text x="1150.0" y="496.5" text-anchor="middle" class="s">feeder, transitioner,</text>
+<text x="1150.0" y="512.5" text-anchor="middle" class="s">validator, assimilator</text>
+<path d="M1262,455 v76 a75.0,8 0 0 0 150,0 v-76" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+<ellipse cx="1337.0" cy="455" rx="75.0" ry="8" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1337.0" y="493.0" text-anchor="middle" class="hs">rkfold-db</text>
+<text x="1337.0" y="509.0" text-anchor="middle" class="s">MariaDB 12.3</text>
+<path d="M1040,490 H1065" class="dl" marker-end="url(#ad)" marker-start="url(#ad)"/>
+<path d="M1235,490 H1262" class="ln" marker-end="url(#ar)"/>
+<rect x="870" y="560" width="550" height="60" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="1145.0" y="586.0" text-anchor="middle" class="hs">/srv/boinc/rkfold/</text>
+<text x="1145.0" y="602.0" text-anchor="middle" class="s">project dir · db · backups (owned by boinc-rkfold)</text>
+<rect x="1440" y="450" width="170" height="170" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="1525.0" y="507.0" text-anchor="middle" class="hs">Docker apps</text>
+<text x="1525.0" y="523.0" text-anchor="middle" class="s">e.g. gpucheck</text>
+<text x="1525.0" y="539.0" text-anchor="middle" class="s">plan class</text>
+<text x="1525.0" y="555.0" text-anchor="middle" class="s">docker_nvidia</text>
+<text x="1525.0" y="571.0" text-anchor="middle" class="s">→ volunteers' Podman</text>
+<path d="M830,240 H822 V492 H870" class="ln" marker-end="url(#ar)"/>
+<rect x="835" y="371" width="373.4" height="17" rx="3" fill="#fff" opacity="0.93"/>
+<text x="839" y="383" text-anchor="start" class="lb">Host rkfold.rechenkraft.net + /rkfold/  →  127.0.0.1:18081</text>
+<rect x="850" y="660" width="780" height="250" rx="10" fill="#fefce8" stroke="#ca8a04" stroke-width="1.5"/>
+<text x="870" y="682" text-anchor="start" class="hs">Linux user boinc-kifold  ·  rootless Podman  ·  network "kifold"</text>
+<text x="870" y="700" class="s">master URL https://kifold.kerbodyne.com/kifold/</text>
+<rect x="870" y="720" width="170" height="85" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+<text x="955.0" y="750.5" text-anchor="middle" class="hs">kifold-web</text>
+<text x="955.0" y="766.5" text-anchor="middle" class="s">Apache, PHP, scheduler</text>
+<text x="955.0" y="782.5" text-anchor="middle" class="s">127.0.0.1:18082</text>
+<rect x="1065" y="720" width="170" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1150.0" y="750.5" text-anchor="middle" class="hs">kifold-daemons</text>
+<text x="1150.0" y="766.5" text-anchor="middle" class="s">feeder, transitioner,</text>
+<text x="1150.0" y="782.5" text-anchor="middle" class="s">validator, assimilator</text>
+<path d="M1262,725 v76 a75.0,8 0 0 0 150,0 v-76" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+<ellipse cx="1337.0" cy="725" rx="75.0" ry="8" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1337.0" y="763.0" text-anchor="middle" class="hs">kifold-db</text>
+<text x="1337.0" y="779.0" text-anchor="middle" class="s">MariaDB 12.3</text>
+<path d="M1040,760 H1065" class="dl" marker-end="url(#ad)" marker-start="url(#ad)"/>
+<path d="M1235,760 H1262" class="ln" marker-end="url(#ar)"/>
+<rect x="870" y="830" width="550" height="60" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="1145.0" y="856.0" text-anchor="middle" class="hs">/srv/boinc/kifold/</text>
+<text x="1145.0" y="872.0" text-anchor="middle" class="s">project dir · db · backups (owned by boinc-kifold)</text>
+<rect x="1440" y="720" width="170" height="170" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="1525.0" y="777.0" text-anchor="middle" class="hs">Docker apps</text>
+<text x="1525.0" y="793.0" text-anchor="middle" class="s">e.g. gpucheck</text>
+<text x="1525.0" y="809.0" text-anchor="middle" class="s">plan class</text>
+<text x="1525.0" y="825.0" text-anchor="middle" class="s">docker_nvidia</text>
+<text x="1525.0" y="841.0" text-anchor="middle" class="s">→ volunteers' Podman</text>
+<path d="M830,240 H822 V762 H870" class="ln" marker-end="url(#ar)"/>
+<rect x="835" y="641" width="360.8" height="17" rx="3" fill="#fff" opacity="0.93"/>
+<text x="839" y="653" text-anchor="start" class="lb">Host kifold.kerbodyne.com + /kifold/  →  127.0.0.1:18082</text>
+<path d="M210,151 C250,151 260,180 295,180" class="ln" marker-end="url(#ar)"/>
+<rect x="230.25" y="128" width="39.5" height="17" rx="3" fill="#fff" opacity="0.93"/>
+<text x="250" y="140" text-anchor="middle" class="lb">HTTPS</text>
+<path d="M210,261 C250,261 260,220 295,220" class="ln" marker-end="url(#ar)"/>
+<rect x="230.25" y="263" width="39.5" height="17" rx="3" fill="#fff" opacity="0.93"/>
+<text x="250" y="275" text-anchor="middle" class="lb">HTTPS</text>
+<path d="M455,300 V330" class="ln" marker-end="url(#ar)"/>
+<path d="M615,370 H660" class="ln" marker-end="url(#ar)"/>
+<path d="M780,330 C800,330 800,325 830,325" class="ln" marker-end="url(#ar)"/>
+<path d="M995,290 V260" class="ln" marker-end="url(#ar)"/>
+<path d="M210,811 H250 V700 H720 V460" class="dl" marker-end="url(#ad)"/>
+<rect x="239.75" y="682" width="480.5" height="17" rx="3" fill="#fff" opacity="0.93"/>
+<text x="480" y="694" text-anchor="middle" class="lb">SSH via Tailscale (tech admin: host, project admins: boinc-&lt;project&gt;)</text>
+<text x="20" y="975" class="s">Solid: traffic · dashed: shared namespaces / admin access · every project is isolated in its own Linux user, network and data directory. Tailscale IPs are examples.</text>
+</svg>
