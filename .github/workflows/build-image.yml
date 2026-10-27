@@ -1,13 +1,13 @@
 name: build-image
 
-# Builds the BOINC server image and pushes it to GHCR.
+# Builds the BOINC server image and the base image for Docker apps and pushes both to GHCR.
 # - on changes under image/ on main
 # - weekly (Debian/Apache/PHP security updates land in the image automatically)
 # - manually, optionally with a different BOINC release
 on:
   push:
     branches: [main]
-    paths: ["image/**", ".github/workflows/build-image.yml"]
+    paths: ["image/**", "app-base/**", ".github/workflows/build-image.yml"]
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
@@ -66,3 +66,38 @@ jobs:
             org.opencontainers.image.description=BOINC server ${{ steps.p.outputs.version }} (Debian trixie, Apache, PHP)
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Base image for Docker apps, pulled by the volunteers' BOINC clients.
+  # Set the GHCR package "boinc-app-base" to public once, so clients can pull it without login.
+  app-base:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parameters
+        id: p
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner}/boinc-app-base" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: app-base
+          file: app-base/Containerfile
+          pull: true
+          push: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          tags: |
+            ${{ steps.p.outputs.image }}:trixie
+            ${{ steps.p.outputs.image }}:trixie-${{ steps.p.outputs.date }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

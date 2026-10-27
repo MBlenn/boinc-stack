@@ -66,6 +66,15 @@ podman exec <project>-daemons boinc-app results gpucheck
    If there is no such line, Podman/Docker does not work for the client user (see steps 2 to 4).
    Then update the project.
 
+## Why app images must not use RUN
+
+The client runs as a system service (user `boinc`) without a systemd user session. Rootless
+Podman falls back to cgroupfs for normal containers, but `RUN` steps during `podman build`
+try to create a systemd scope and fail with "Access denied … interactive authentication".
+Pulling a base image does not need that, so everything the app needs is put into a base
+image on GHCR (`app-base/`, built by the same workflow). The GHCR package `boinc-app-base`
+must be public.
+
 ## Adding an app
 
 Copy `image/apps/gpucheck` and adapt it:
@@ -74,7 +83,7 @@ Copy `image/apps/gpucheck` and adapt it:
 |---|---|
 | `app.env` | `APP_NAME`, `APP_TITLE`, `APP_VERSION`, `PLAN_CLASS` |
 | `plan_class.xml` | `<plan_class>` block, added to the project's `plan_class_spec.xml` |
-| `files/Dockerfile` | image built on the host. The slot directory is mounted at `/app`. Debian-based images need `procps`. |
+| `files/Dockerfile` | image built on the host. The slot directory is mounted at `/app`. **No `RUN` steps**: start `FROM ghcr.io/mblenn/boinc-app-base:trixie` (or another image that already contains everything, including `procps`) and only use `WORKDIR`, `COPY`, `ENV`, `CMD`. |
 | `files/job.toml` | docker_wrapper options, e.g. `use_gpu = true`, `image_name` (without `:tag`, see the comment in gpucheck's job.toml) |
 | `files/*` | further app files (scripts, binaries). `@APP_VERSION@` is substituted. |
 | `templates/in.xml`, `templates/out.xml` | input and output templates for `create_work` |

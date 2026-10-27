@@ -1,0 +1,14 @@
+# Base image for boinc-stack Docker apps (ghcr.io/<owner>/boinc-app-base:trixie).
+#
+# Apps build their image on the volunteer's host. Every RUN step there needs a container
+# with network access, and that fails when the BOINC client runs as a system service
+# (no systemd user session for rootless Podman). Everything an app needs at runtime is
+# therefore installed here; app Dockerfiles only use FROM, WORKDIR, COPY, ENV and CMD.
+FROM docker.io/library/debian:trixie-slim
+
+# procps: docker_wrapper requires 'ps' inside the container
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends procps ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+LABEL org.opencontainers.image.description="Base image for boinc-stack Docker apps (Debian trixie + procps)"
