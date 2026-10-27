@@ -40,21 +40,31 @@ podman exec <project>-daemons boinc-app results gpucheck
 
 1. **BOINC client 8.2 or newer.** At startup the client looks for Podman first, then
    Docker, and runs `hello-world` **as the user the client runs as** (`boinc` for the
-   distribution packages). The event log shows the result, e.g. `Podman version 5.x` or
-   `Podman found but 'hello-world' test failed`.
-2. **Make the container runtime usable for the client user**:
-   - Docker: `sudo usermod -aG docker boinc`
-   - Podman (rootless): the user needs subordinate IDs, e.g.
-     `sudo usermod --add-subuids 500000-565535 --add-subgids 500000-565535 boinc`
-3. **NVIDIA Container Toolkit** (package `nvidia-container-toolkit` from NVIDIA's repository):
+   distribution packages). If that test fails, the event log may not mention Docker or
+   Podman at all.
+2. **Make the container runtime usable for the client user** (Podman is recommended, it runs rootless):
+   - Podman: the client user needs subordinate IDs, then reset Podman's storage once:
+     ```bash
+     sudo usermod --add-subuids 500000-565535 --add-subgids 500000-565535 boinc
+     cd /tmp && sudo -u boinc podman system migrate
+     ```
+     Optional: `sudo loginctl enable-linger boinc` gives the user a systemd session. Without it,
+     Podman warns about the cgroup manager and falls back to cgroupfs, which also works.
+   - Docker: `sudo usermod -aG docker boinc`. Members of the `docker` group are effectively root.
+3. **NVIDIA Container Toolkit** (package `nvidia-container-toolkit` from NVIDIA's apt repository,
+   see the [installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)):
+   - Podman: `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, check with `nvidia-ctk cdi list`.
+     Recent toolkit versions also install `nvidia-cdi-refresh.service`, which regenerates the
+     CDI specification after driver updates.
    - Docker: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
-   - Podman: `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`
-4. **Test as the client user**:
+4. **Test as the client user** (run it from a directory the user can access, e.g. `/tmp`):
    ```bash
-   sudo -u boinc podman run --rm --gpus all docker.io/library/debian:trixie-slim nvidia-smi
-   # or: sudo -u boinc docker run --rm --gpus all debian:trixie-slim nvidia-smi
+   cd /tmp && sudo -u boinc podman run --rm --gpus all docker.io/library/debian:trixie-slim nvidia-smi
+   # or: cd /tmp && sudo -u boinc docker run --rm --gpus all debian:trixie-slim nvidia-smi
    ```
-5. Restart the BOINC client and update the project.
+5. Restart the BOINC client. The event log must show a line like `Docker: version 5.7.0 (podman)`.
+   If there is no such line, Podman/Docker does not work for the client user (see steps 2 to 4).
+   Then update the project.
 
 ## Adding an app
 
