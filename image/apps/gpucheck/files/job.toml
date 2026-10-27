@@ -1,4 +1,6 @@
 # docker_wrapper configuration
 use_gpu = true
-# fixed image name: built once per host and reused by all gpucheck jobs of this version
-image_name = "boinc-stack-gpucheck:@APP_VERSION@"
+# Fixed image name: built once per host and reused by all gpucheck jobs of this version.
+# No ":tag" here: docker_wrapper checks "docker images" output for "<name> " and Podman lists
+# repository and tag in separate columns, so a tagged name is never found as existing.
+image_name = "boinc-stack-gpucheck-@APP_VERSION@"

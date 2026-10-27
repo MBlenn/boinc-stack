@@ -75,7 +75,7 @@ Copy `image/apps/gpucheck` and adapt it:
 | `app.env` | `APP_NAME`, `APP_TITLE`, `APP_VERSION`, `PLAN_CLASS` |
 | `plan_class.xml` | `<plan_class>` block, added to the project's `plan_class_spec.xml` |
 | `files/Dockerfile` | image built on the host. The slot directory is mounted at `/app`. Debian-based images need `procps`. |
-| `files/job.toml` | docker_wrapper options, e.g. `use_gpu = true`, `image_name` |
+| `files/job.toml` | docker_wrapper options, e.g. `use_gpu = true`, `image_name` (without `:tag`, see the comment in gpucheck's job.toml) |
 | `files/*` | further app files (scripts, binaries). `@APP_VERSION@` is substituted. |
 | `templates/in.xml`, `templates/out.xml` | input and output templates for `create_work` |
 
