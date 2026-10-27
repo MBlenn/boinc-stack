@@ -48,8 +48,14 @@ podman exec <project>-daemons boinc-app results gpucheck
      sudo usermod --add-subuids 500000-565535 --add-subgids 500000-565535 boinc
      cd /tmp && sudo -u boinc podman system migrate
      ```
-     Optional: `sudo loginctl enable-linger boinc` gives the user a systemd session. Without it,
-     Podman warns about the cgroup manager and falls back to cgroupfs, which also works.
+     The client service has no systemd user session, so Podman prints four warnings per command
+     and falls back to cgroupfs (which works). To silence them, set cgroupfs explicitly for the
+     client user (home directory of `boinc` on Debian/Ubuntu: `/var/lib/boinc`):
+     ```bash
+     sudo -u boinc mkdir -p /var/lib/boinc/.config/containers
+     printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' \
+       | sudo -u boinc tee /var/lib/boinc/.config/containers/containers.conf
+     ```
    - Docker: `sudo usermod -aG docker boinc`. Members of the `docker` group are effectively root.
 3. **NVIDIA Container Toolkit** (package `nvidia-container-toolkit` from NVIDIA's apt repository,
    see the [installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)):
@@ -74,6 +80,13 @@ try to create a systemd scope and fail with "Access denied … interactive authe
 Pulling a base image does not need that, so everything the app needs is put into a base
 image on GHCR (`app-base/`, built by the same workflow). The GHCR package `boinc-app-base`
 must be public.
+
+## Where the results are
+
+The job output goes to the output file, not to stderr. `gpucheck` writes the `nvidia-smi`
+report to `out`, which is uploaded and copied by the assimilator to
+`<project dir>/results/`. Show it with `boinc-app results gpucheck`. The task's stderr only
+contains the docker_wrapper log (and the container's stderr, if any).
 
 ## Adding an app
 
