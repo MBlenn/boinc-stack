@@ -1,28 +1,49 @@
 #!/usr/bin/env python3
-"""Install and feed the Docker-based BOINC apps shipped with the boinc-stack image.
+"""Install and feed Docker-based BOINC apps.
 
 Run inside the daemons container (as root via `podman exec` or as boincadm):
 
-    boinc-app list                 apps shipped in the image
-    boinc-app install <app>        register app, plan class, app version, templates, daemons
-    boinc-app submit <app> [N]     create N jobs (default 1)
-    boinc-app results <app>        show the result files collected by the assimilator
+    boinc-app list                          apps in the image and apps installed in the project
+    boinc-app install <app> [--from SRC]    register app, plan class, app version, templates, daemons
+    boinc-app submit <app> [N]              create N jobs (default 1)
+    boinc-app results <app>                 show the result files collected by the assimilator
 
-An app lives in /usr/local/share/boinc-stack/apps/<app>/:
-    app.env              APP_NAME, APP_TITLE, APP_VERSION, PLAN_CLASS
+SRC is where the app definition comes from (default: the apps shipped in this image):
+    https://github.com/OWNER/REPO[@REF]     a GitHub repository (REF: branch, tag or commit,
+                                            default main) with the app in apps/<app>/
+    /some/path                              a directory containing apps/<app>/ or <app>/
+
+install copies the app definition into the project (<project>/boinc_apps/<app>/, the
+origin is recorded in SOURCE). submit and results use that copy, so later image or
+repository changes only take effect after another install.
+
+An app definition (<source>/apps/<app>/) contains:
+    app.env              APP_NAME, APP_TITLE, APP_VERSION, PLAN_CLASS,
+                         optional VALIDATOR / ASSIMILATOR (daemon command lines)
     plan_class.xml       <plan_class> block added to plan_class_spec.xml
     files/               Dockerfile, main.sh, job.toml, ... (@APP_VERSION@ is substituted)
     templates/in.xml     input template, templates/out.xml output template
+    server/              optional: scripts copied to the project's bin/ (e.g. a validator)
+    jobs.py              optional: make_jobs(count, rng, stamp, testdata) for "submit";
+                         without it, jobs without input files are created
+    testdata/            optional: input files referenced by jobs.py
 """
 import hashlib
+import importlib.util
+import random
+import html
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
 import time
+import urllib.request
 
-APPS_DIR = "/usr/local/share/boinc-stack/apps"
+APPS_DIR = "/usr/local/share/boinc-stack/apps"   # apps shipped in the image
+SNAPSHOT_DIR = "boinc_apps"                        # per project: installed app definitions
 WRAPPER = "/usr/local/lib/boinc-stack/docker_wrapper"
 PLATFORM = "x86_64-pc-linux-gnu"
 
@@ -48,8 +69,19 @@ def project_root():
     return root
 
 
-def load_app(name):
-    d = os.path.join(APPS_DIR, name)
+def valid_name(name):
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", name):
+        die(f"invalid app name '{name}' (lowercase letters, digits, underscore)")
+    return name
+
+
+def load_app(name, d=None):
+    """Read app.env. Without d: the copy installed in the project, else the image's app."""
+    valid_name(name)
+    if d is None:
+        d = os.path.join(project_root(), SNAPSHOT_DIR, name)
+        if not os.path.isfile(os.path.join(d, "app.env")):
+            d = os.path.join(APPS_DIR, name)
     if not os.path.isfile(os.path.join(d, "app.env")):
         die(f"unknown app '{name}' (see 'boinc-app list')")
     env = {}
@@ -61,8 +93,60 @@ def load_app(name):
     for k in ("APP_NAME", "APP_TITLE", "APP_VERSION", "PLAN_CLASS"):
         if not env.get(k):
             die(f"{k} missing in {d}/app.env")
+    env.setdefault("VALIDATOR", f"sample_trivial_validator --app {env['APP_NAME']}")
+    env.setdefault("ASSIMILATOR", f"sample_assimilator --app {env['APP_NAME']}")
+    if env["APP_NAME"] != name:
+        die(f"{d}/app.env: APP_NAME={env['APP_NAME']} does not match the directory name {name}")
     env["DIR"] = d
     return env
+
+
+def parse_github(src):
+    m = re.fullmatch(r"https://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/?(?:@([\w./-]+))?", src)
+    return m.groups() if m else None
+
+
+def fetch_source(src, name, workdir):
+    """Return (app directory, description of the origin) for --from SRC."""
+    gh = parse_github(src)
+    if gh:
+        owner, repo, ref = gh[0], gh[1], gh[2] or "main"
+        url = f"https://github.com/{owner}/{repo}/archive/{ref}.tar.gz"
+        print(f"downloading {url}")
+        tgz = os.path.join(workdir, "src.tar.gz")
+        try:
+            with urllib.request.urlopen(url, timeout=120) as r, open(tgz, "wb") as f:
+                shutil.copyfileobj(r, f)
+        except OSError as e:
+            die(f"download failed: {e}")
+        with tarfile.open(tgz) as t:
+            t.extractall(workdir, filter="data")
+        tops = [e for e in os.listdir(workdir) if os.path.isdir(os.path.join(workdir, e))]
+        if len(tops) != 1:
+            die(f"unexpected archive layout in {url}")
+        base, origin = os.path.join(workdir, tops[0]), f"https://github.com/{owner}/{repo}@{ref}"
+    elif src.startswith("/"):
+        base, origin = src, src
+    else:
+        die(f"--from: expected https://github.com/OWNER/REPO[@REF] or an absolute path, got '{src}'")
+    for d in (os.path.join(base, "apps", name), os.path.join(base, name), base):
+        if os.path.isfile(os.path.join(d, "app.env")) and os.path.basename(os.path.normpath(d)) == name:
+            return d, origin
+    die(f"app '{name}' not found in {origin} (expected apps/{name}/app.env)")
+
+
+def snapshot_app(root, src_dir, name, origin):
+    """Copy the app definition into the project; submit/results/validators use this copy."""
+    dst = os.path.join(root, SNAPSHOT_DIR, name)
+    tmp = dst + ".new"
+    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.copytree(src_dir, tmp, symlinks=False)
+    with open(os.path.join(tmp, "SOURCE"), "w", encoding="utf-8") as f:
+        f.write(f"{origin}\n{time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    shutil.rmtree(dst, ignore_errors=True)
+    os.rename(tmp, dst)
+    print(f"app definition: {SNAPSHOT_DIR}/{name} (from {origin})")
+    return dst
 
 
 def run(cmd, root, stdin=None):
@@ -143,29 +227,45 @@ def install_templates(root, app):
     print(f"templates: templates/{app['APP_NAME']}_in, templates/{app['APP_NAME']}_out")
 
 
+def install_server_scripts(root, app):
+    sdir = os.path.join(app["DIR"], "server")
+    if not os.path.isdir(sdir):
+        return
+    for fn in sorted(os.listdir(sdir)):
+        dst = os.path.join(root, "bin", fn)
+        shutil.copyfile(os.path.join(sdir, fn), dst)
+        os.chmod(dst, 0o755)
+        print(f"server script: bin/{fn}")
+
+
 def ensure_daemons(root, app):
-    """Trivial validator and sample assimilator per app (own log and pid names)."""
+    """Validator and assimilator per app (own log and pid names).
+
+    An existing daemon entry with the same output file is replaced, so changing
+    VALIDATOR/ASSIMILATOR in app.env and re-running install takes effect."""
     path = os.path.join(root, "config.xml")
     xml = open(path, encoding="utf-8").read()
     n = app["APP_NAME"]
-    wanted = [
-        ("sample_trivial_validator", f"validator_{n}"),
-        ("sample_assimilator", f"assimilator_{n}"),
-    ]
-    added = []
-    for prog, tag in wanted:
-        if f"{prog} --app {n}" in xml:
-            continue
+    changed = []
+    for cmd, tag in ((app["VALIDATOR"], f"validator_{n}"), (app["ASSIMILATOR"], f"assimilator_{n}")):
         entry = ("        <daemon>\n"
-                 f"            <cmd>{prog} --app {n}</cmd>\n"
+                 f"            <cmd>{html.escape(cmd, quote=False)}</cmd>\n"
                  f"            <output>{tag}.log</output>\n"
                  f"            <pid_file>{tag}.pid</pid_file>\n"
                  "        </daemon>\n")
-        xml = xml.replace("</daemons>", entry + "    </daemons>", 1)
-        added.append(prog)
-    if added:
+        old = re.search(r"[ \t]*<daemon>(?:(?!</daemon>).)*<output>%s\.log</output>.*?</daemon>\n"
+                        % re.escape(tag), xml, re.S)
+        if old and old.group(0) == entry:
+            continue
+        if old:
+            xml = xml.replace(old.group(0), entry, 1)
+        else:
+            xml = xml.replace("</daemons>", entry + "    </daemons>", 1)
+        changed.append(cmd)
+    if changed:
         open(path, "w", encoding="utf-8").write(xml)
-        print(f"daemons: added {', '.join(added)}")
+        for c in changed:
+            print(f"daemon: {c}")
     else:
         print("daemons: already configured")
 
@@ -177,26 +277,78 @@ def restart_daemons(root):
     run(["bin/start"], root)
 
 
+def list_dir(base):
+    rows = []
+    if os.path.isdir(base):
+        for name in sorted(os.listdir(base)):
+            if os.path.isfile(os.path.join(base, name, "app.env")):
+                try:
+                    rows.append((name, load_app(name, os.path.join(base, name))))
+                except SystemExit:
+                    pass
+    return rows
+
+
 def cmd_list():
-    for name in sorted(os.listdir(APPS_DIR)):
-        try:
-            app = load_app(name)
-        except SystemExit:
-            continue
-        print(f"{name:12} {app['APP_VERSION']:6} {app['PLAN_CLASS']:16} {app['APP_TITLE']}")
+    root = project_root()
+    print("Installed in this project:")
+    rows = list_dir(os.path.join(root, SNAPSHOT_DIR))
+    for name, app in rows:
+        src = open(os.path.join(app["DIR"], "SOURCE"), encoding="utf-8").readline().strip() \
+            if os.path.isfile(os.path.join(app["DIR"], "SOURCE")) else "?"
+        print(f"  {name:12} {app['APP_VERSION']:6} {app['PLAN_CLASS']:20} {src}")
+    if not rows:
+        print("  (none)")
+    print("Shipped in the image (boinc-app install <app>):")
+    for name, app in list_dir(APPS_DIR):
+        print(f"  {name:12} {app['APP_VERSION']:6} {app['PLAN_CLASS']:20} {app['APP_TITLE']}")
+    print("More apps: boinc-app install <app> --from https://github.com/MBlenn/boinc-apps")
 
 
-def cmd_install(name):
-    root, app = project_root(), load_app(name)
+def cmd_install(name, src=None):
+    root = project_root()
+    valid_name(name)
     if not os.path.isfile(WRAPPER):
         die(f"{WRAPPER} missing in this image")
+    with tempfile.TemporaryDirectory() as work:
+        if src:
+            src_dir, origin = fetch_source(src, name, work)
+        else:
+            src_dir, origin = os.path.join(APPS_DIR, name), "image"
+            if not os.path.isfile(os.path.join(src_dir, "app.env")):
+                die(f"app '{name}' is not shipped in the image; use --from SRC (see 'boinc-app list')")
+        load_app(name, src_dir)          # validate before touching the project
+        app = load_app(name, snapshot_app(root, src_dir, name, origin))
     ensure_plan_class(root, app)
     ensure_app_in_project_xml(root, app)
     build_app_version(root, app)
     install_templates(root, app)
+    install_server_scripts(root, app)
     ensure_daemons(root, app)
     restart_daemons(root)
     print(f"\n{name} installed. Create jobs with: boinc-app submit {name} [N]")
+
+
+def stage_input(root, app, path):
+    """Copy a test data file into the download hierarchy (once); return its physical name.
+    The name carries a content hash, so changed test data never collides with old jobs."""
+    phys = f"{app['APP_NAME']}_{sha8(path)}_{os.path.basename(path)}"
+    dst = subprocess.run(["bin/dir_hier_path", phys], cwd=root, capture_output=True,
+                         text=True, check=True).stdout.strip()
+    if not os.path.exists(dst):
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(path, dst)
+    return phys
+
+
+def load_jobs_module(app):
+    path = os.path.join(app["DIR"], "jobs.py")
+    if not os.path.isfile(path):
+        return None
+    spec = importlib.util.spec_from_file_location(f"jobs_{app['APP_NAME']}", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def cmd_submit(name, count):
@@ -205,12 +357,27 @@ def cmd_submit(name, count):
     if not os.path.isfile(os.path.join(root, "templates", f"{n}_in")):
         die(f"{n} is not installed yet (boinc-app install {n})")
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    for i in range(count):
-        wu = f"{n}_{stamp}_{i}"
-        run(["bin/create_work", "--appname", n, "--wu_name", wu,
-             "--wu_template", f"templates/{n}_in",
-             "--result_template", f"templates/{n}_out"], root)
-    print(f"{count} job(s) created for {n}")
+    base = ["bin/create_work", "--appname", n,
+            "--wu_template", f"templates/{n}_in", "--result_template", f"templates/{n}_out"]
+    jobs_mod = load_jobs_module(app)
+    if jobs_mod is None:
+        for i in range(count):
+            run(base + ["--wu_name", f"{n}_{stamp}_{i}"], root)
+        print(f"{count} job(s) created for {n}")
+        return
+    testdata = os.path.join(app["DIR"], "testdata")
+    jobs = jobs_mod.make_jobs(count, random.Random(), stamp, testdata)
+    kinds = {}
+    for job in jobs:
+        files = [stage_input(root, app, os.path.join(testdata, f)) for f in job["inputs"]]
+        cmd = base + ["--wu_name", job["name"]] + job.get("options", [])
+        if job.get("args"):
+            cmd += ["--command_line", job["args"]]
+        run(cmd + files, root)
+        kind = job["name"].split("_")[1]
+        kinds[kind] = kinds.get(kind, 0) + 1
+    print(f"{len(jobs)} job(s) created for {n}: " +
+          ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())))
 
 
 def cmd_results(name):
@@ -240,6 +407,8 @@ def main():
         cmd_list()
     elif cmd == "install" and len(args) == 2:
         cmd_install(args[1])
+    elif cmd == "install" and len(args) == 4 and args[2] == "--from":
+        cmd_install(args[1], args[3])
     elif cmd == "submit" and len(args) in (2, 3):
         cmd_submit(args[1], int(args[2]) if len(args) == 3 else 1)
     elif cmd == "results" and len(args) == 2:

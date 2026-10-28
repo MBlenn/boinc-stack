@@ -7,9 +7,14 @@ Docker or Podman and runs each job in a container.
 The server image of boinc-stack contains:
 
 - `docker_wrapper` for Linux x86_64, statically linked, so it also runs on older distributions
-- the apps under `image/apps/`, installed into a project with `boinc-app`
+- the example app `gpucheck` under `image/apps/`
 - `boinc-app`, which registers an app (plan class, app version, templates, validator and
   assimilator) and creates jobs
+
+Science apps are kept in a separate repository,
+[MBlenn/boinc-apps](https://github.com/MBlenn/boinc-apps), together with the CI that builds
+their app images. `boinc-app install <app> --from <source>` installs an app from there (or
+from any repository or directory with the same layout, see [App format](#app-format)).
 
 Currently supported: **Linux hosts with an NVIDIA GPU**. Windows (WSL) and AMD GPUs are not
 covered yet.
@@ -35,6 +40,20 @@ podman exec <project>-daemons boinc-app results gpucheck
 
 `install` can be repeated safely. To deploy changed app files, raise `APP_VERSION` in
 `image/apps/<app>/app.env`, rebuild the image and run `install` again.
+
+### Apps from another repository
+
+```bash
+podman exec <project>-daemons boinc-app install gnina --from https://github.com/MBlenn/boinc-apps
+podman exec <project>-daemons boinc-app install gnina --from https://github.com/MBlenn/boinc-apps@v1.0
+podman exec <project>-daemons boinc-app install myapp --from /path/in/container/myrepo
+```
+
+The repository is downloaded as a tarball (branch, tag or commit after `@`, default `main`)
+and must contain `apps/<app>/`. `install` copies the app definition into the project
+(`<project dir>/boinc_apps/<app>/`, origin and time in `SOURCE`). `submit`, `results` and the
+app's server scripts use that copy, so a project keeps working the same way until the app is
+installed again. `boinc-app list` shows the installed apps and their origin.
 
 ### On the volunteer's host (Linux, NVIDIA)
 
@@ -88,9 +107,11 @@ report to `out`, which is uploaded and copied by the assimilator to
 `<project dir>/results/`. Show it with `boinc-app results gpucheck`. The task's stderr only
 contains the docker_wrapper log (and the container's stderr, if any).
 
-## Adding an app
+## App format
 
-Copy `image/apps/gpucheck` and adapt it:
+An app is a directory `apps/<app>/` (in this repository under `image/apps/`). Start from
+`image/apps/gpucheck` or, for an app with input files and its own validator, from `apps/gnina`
+in boinc-apps:
 
 | File | Purpose |
 |---|---|
@@ -99,7 +120,24 @@ Copy `image/apps/gpucheck` and adapt it:
 | `files/Dockerfile` | image built on the host. The slot directory is mounted at `/app`. **No `RUN` steps**: start `FROM ghcr.io/mblenn/boinc-app-base:trixie` (or another image that already contains everything, including `procps`) and only use `WORKDIR`, `COPY`, `ENV`, `CMD`. |
 | `files/job.toml` | docker_wrapper options, e.g. `use_gpu = true`, `image_name` (without `:tag`, see the comment in gpucheck's job.toml) |
 | `files/*` | further app files (scripts, binaries). `@APP_VERSION@` is substituted. |
-| `templates/in.xml`, `templates/out.xml` | input and output templates for `create_work` |
+| `templates/in.xml`, `templates/out.xml` | input and output templates for `create_work`. Values set here override `create_work` options, so leave out anything `jobs.py` sets per job (e.g. `rsc_fpops_est`, `max_error_results`). |
+| `server/*` (optional) | scripts copied to the project's `bin/` (mode 755), e.g. a validator for `script_validator` |
+| `jobs.py` (optional) | `make_jobs(count, rng, stamp, testdata)` returns a list of jobs for `submit`: `{"name": ..., "inputs": [files in testdata/], "options": [create_work options], "args": "command line"}`. Without it, `submit` creates jobs without input files. |
+| `testdata/` (optional) | input files referenced by `jobs.py`. They are staged into the download hierarchy under a content-hashed name. |
+
+`app.env` may also set the daemon command lines (defaults shown):
+
+```
+VALIDATOR=sample_trivial_validator --app <app>
+ASSIMILATOR=sample_assimilator --app <app>
+```
 
 The trivial validator accepts every result, and the sample assimilator copies the output
-files to `<project dir>/results/`. Real apps will need their own validator and assimilator.
+files to `<project dir>/results/`. Real apps need their own validator, e.g.
+`script_validator --app <app> --init_script "<script> files result_id"` with the script in
+`server/` (exit 0 = valid, 3 = retry later, anything else = invalid). Changing `VALIDATOR`
+or `ASSIMILATOR` and running `install` again replaces the daemon entries in `config.xml`.
+
+App images that need more than `boinc-app-base` (binaries, libraries) are built in CI and
+pulled by the clients; the app's `files/Dockerfile` then only contains `FROM` that image plus
+`WORKDIR`, `COPY`, `ENV`, `CMD`. The GHCR package must be public.
