@@ -19,8 +19,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone --depth 1 --branch "${BOINC_REF}" https://github.com/BOINC/boinc.git /usr/local/src/boinc
 
 WORKDIR /usr/local/src/boinc
+# The libraries are built first with explicit targets: programs in lib/, api/ and sched/
+# depend on ../lib/libboinc.la etc., whose rule starts a second make for the same library.
+# With "make -j" both builds then race on the same object files
+# ("mv: cannot stat '.deps/libboinc_la-....Tpo'").
 RUN ./_autosetup \
     && ./configure --enable-server --disable-client --disable-manager --disable-fcgi \
+    && make -C lib -j"$(nproc)" libboinc.la libboinc_crypt.la \
+    && make -C api -j"$(nproc)" libboinc_api.la \
+    && make -C sched -j"$(nproc)" libsched.la \
     && make -j"$(nproc)" \
     && echo "${BOINC_REF}" > /usr/local/src/boinc/BOINC_REF
 
