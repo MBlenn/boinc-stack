@@ -1,0 +1,14 @@
+# Edge proxy with Caddy on a VPS (see docs/edge.md), as an alternative to Apache.
+# Caddy obtains the certificate itself (ports 80 and 443 of the VPS must be free).
+# Replace boinc.example.org and boinc-host (Tailscale name or IP of the BOINC host).
+{
+	# email admin@example.org
+}
+
+boinc.example.org {
+	header -Server
+	# The Host header is passed on unchanged, the BOINC host routes by it
+	reverse_proxy http://boinc-host:80 {
+		header_down -Server
+	}
+}

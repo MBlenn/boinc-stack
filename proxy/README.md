@@ -27,6 +27,10 @@ With a single project on an address, `/` redirects to `/<project>/`.
   certificate automatically. The DNS record must point to the server and ports 80/443 must
   be reachable from the internet.
 - **Site address with `http://`** (`http://192.0.2.10`): no TLS, for LAN testing.
+- **Behind an edge proxy on a VPS** (no public IP on this host): site address
+  `http://<public hostname>` plus `-e <edge IP>` on `new-project.sh`. The edge (Apache or
+  Caddy on the VPS) terminates TLS and forwards via Tailscale. See
+  [docs/edge.md](../docs/edge.md) and the templates in `proxy/edge/`.
 - **Dedicated IP per project**: `-b <IP>` on `new-project.sh` adds `bind <IP>` to the site.
   Give such a project its own site address (a hostname or that IP).
   The IP must be configured on the host (e.g. via netplan).

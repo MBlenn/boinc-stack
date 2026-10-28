@@ -9,6 +9,9 @@
 #   ./new-project.sh -n rkfold -l "Rechenkraft Folding" \
 #       -u https://rkfold.example.org/ -s rkfold.example.org
 #   ./new-project.sh -n test1 -l "Test project" -u http://192.0.2.10/ -s http://192.0.2.10
+#   behind an edge proxy on a VPS that connects via Tailscale (see docs/edge.md):
+#   ./new-project.sh -n rkdemo -l "RK Demo" -u https://boinc.example.org/ \
+#       -s http://boinc.example.org -e 100.64.0.10
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,7 +22,7 @@ MARIADB_IMAGE="${MARIADB_IMAGE:-docker.io/library/mariadb:12.3}"
 
 usage() {
     cat <<EOF
-Usage: $0 -n SHORTNAME -l LONGNAME -u URL_BASE -s SITE_ADDRESS [-p WEB_PORT] [-b BIND_IP] [--no-start]
+Usage: $0 -n SHORTNAME -l LONGNAME -u URL_BASE -s SITE_ADDRESS [-p WEB_PORT] [-b BIND_IP] [-e EDGE_IP] [--no-start]
   -n  short name: a-z, 0-9, 2-16 chars, starting with a letter (becomes Linux user boinc-<project>,
       container prefix, DB name and URL path /<project>/)
   -l  long name of the project (display name)
@@ -29,13 +32,16 @@ Usage: $0 -n SHORTNAME -l LONGNAME -u URL_BASE -s SITE_ADDRESS [-p WEB_PORT] [-b
       Several projects may share one address; they are told apart by their URL path.
   -p  local port for the web container (default: next free port from 18081)
   -b  IP that Caddy binds to for this project (optional)
+  -e  IP of an edge proxy in front of this host (e.g. its Tailscale IP, optional, may be
+      given more than once). Caddy then accepts X-Forwarded-For/-Proto from it, so BOINC
+      sees the real client IPs. Use an http:// site address, the edge terminates TLS.
   --no-start  only create the units, do not start them
 Environment: BOINC_IMAGE (${BOINC_IMAGE}), MARIADB_IMAGE (${MARIADB_IMAGE}), DATA_ROOT (${DATA_ROOT})
 EOF
     exit 1
 }
 
-PROJECT="" PROJECT_LONGNAME="" URL_BASE="" SITE_ADDRESS="" WEB_PORT="" BIND_IP="" START=1
+PROJECT="" PROJECT_LONGNAME="" URL_BASE="" SITE_ADDRESS="" WEB_PORT="" BIND_IP="" EDGE_IPS="" START=1
 while [ $# -gt 0 ]; do
     case "$1" in
         -n) PROJECT="$2"; shift 2 ;;
@@ -44,6 +50,7 @@ while [ $# -gt 0 ]; do
         -s) SITE_ADDRESS="$2"; shift 2 ;;
         -p) WEB_PORT="$2"; shift 2 ;;
         -b) BIND_IP="$2"; shift 2 ;;
+        -e) EDGE_IPS="${EDGE_IPS:+${EDGE_IPS} }$2"; shift 2 ;;
         --no-start) START=0; shift ;;
         *) usage ;;
     esac
@@ -52,6 +59,12 @@ done
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root."; exit 1; }
 [ -n "$PROJECT" ] && [ -n "$PROJECT_LONGNAME" ] && [ -n "$URL_BASE" ] && [ -n "$SITE_ADDRESS" ] || usage
 [[ "$PROJECT" =~ ^[a-z][a-z0-9]{1,15}$ ]] || { echo "Invalid short name: $PROJECT (allowed: lowercase letters a-z and digits, 2-16 chars, starting with a letter, e.g. p3dtest1)"; exit 1; }
+for ip in ${EDGE_IPS}; do
+    [[ "$ip" =~ ^[0-9a-fA-F.:]+(/[0-9]{1,3})?$ ]] || { echo "Invalid edge IP: $ip"; exit 1; }
+done
+if [ -n "$EDGE_IPS" ] && [[ "$SITE_ADDRESS" != http://* ]]; then
+    echo "NOTE: with an edge proxy the site address usually starts with http:// (the edge terminates TLS)"
+fi
 for cmd in podman envsubst openssl loginctl; do
     command -v "$cmd" >/dev/null || { echo "Missing: $cmd (apt install podman gettext-base openssl)"; exit 1; }
 done
@@ -116,6 +129,7 @@ USER_NAME=${USER_NAME}
 WEB_PORT=${WEB_PORT}
 SITE_ADDRESS=${SITE_ADDRESS}
 BIND_IP=${BIND_IP}
+EDGE_IPS="${EDGE_IPS}"
 EOF
 chown -R "${USER_NAME}:${USER_NAME}" "${DATA_DIR}"
 chmod 750 "${DATA_DIR}"

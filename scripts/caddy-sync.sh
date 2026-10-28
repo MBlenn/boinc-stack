@@ -21,16 +21,20 @@ MARKER="# managed by boinc-stack scripts/caddy-sync.sh - do not edit"
 site_key() { echo "$1" | sed -E 's#^[a-z]+://##; s#[^A-Za-z0-9.-]+#_#g; s#_+$##'; }
 
 # --- collect projects per site address
-declare -A SITE_PROJECTS=() SITE_BIND=() SITE_ADDR=()
+declare -A SITE_PROJECTS=() SITE_BIND=() SITE_ADDR=() SITE_EDGE=()
 for conf in "${DATA_ROOT}"/*/project.conf; do
     [ -f "$conf" ] || continue
-    PROJECT="" WEB_PORT="" SITE_ADDRESS="" BIND_IP=""
+    PROJECT="" WEB_PORT="" SITE_ADDRESS="" BIND_IP="" EDGE_IPS=""
     # shellcheck disable=SC1090
     . "$conf"
     [ -n "$PROJECT" ] && [ -n "$WEB_PORT" ] && [ -n "$SITE_ADDRESS" ] || { echo "WARNING: incomplete $conf, skipped"; continue; }
     key="$(site_key "$SITE_ADDRESS")"
     SITE_ADDR[$key]="$SITE_ADDRESS"
     SITE_PROJECTS[$key]="${SITE_PROJECTS[$key]:-} ${PROJECT}:${WEB_PORT}"
+    # edge proxies (docs/edge.md): trusted for X-Forwarded-* on the whole site
+    for ip in ${EDGE_IPS}; do
+        [[ " ${SITE_EDGE[$key]:-} " == *" ${ip} "* ]] || SITE_EDGE[$key]="${SITE_EDGE[$key]:-}${SITE_EDGE[$key]:+ }${ip}"
+    done
     if [ -n "$BIND_IP" ]; then
         if [ -n "${SITE_BIND[$key]:-}" ] && [ "${SITE_BIND[$key]}" != "$BIND_IP" ]; then
             echo "WARNING: projects on ${SITE_ADDRESS} request different bind IPs, using ${SITE_BIND[$key]}"
@@ -58,7 +62,11 @@ for key in "${!SITE_PROJECTS[@]}"; do
             p="${e%%:*}" port="${e##*:}"
             printf '\n\t# project %s\n' "$p"
             printf '\t@%s path /%s /%s/* /%s_ops /%s_ops/* /%s_cgi /%s_cgi/*\n' "$p" "$p" "$p" "$p" "$p" "$p" "$p"
-            printf '\thandle @%s {\n\t\treverse_proxy 127.0.0.1:%s {\n\t\t\theader_down -Server\n\t\t}\n\t}\n' "$p" "$port"
+            printf '\thandle @%s {\n\t\treverse_proxy 127.0.0.1:%s {\n' "$p" "$port"
+            if [ -n "${SITE_EDGE[$key]:-}" ]; then
+                printf '\t\t\t# edge proxy: keep its X-Forwarded-For/-Proto\n\t\t\ttrusted_proxies %s\n' "${SITE_EDGE[$key]}"
+            fi
+            printf '\t\t\theader_down -Server\n\t\t}\n\t}\n'
         done
         if [ "${#entries[@]}" -eq 1 ]; then
             printf '\n\tredir / /%s/ 302\n' "${entries[0]%%:*}"
