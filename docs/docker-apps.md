@@ -100,6 +100,30 @@ Pulling a base image does not need that, so everything the app needs is put into
 image on GHCR (`app-base/`, built by the same workflow). The GHCR package `boinc-app-base`
 must be public.
 
+## CPU and GPU variants of an app
+
+BOINC's project preferences offer "Allow CPU-only tasks" and "Use NVIDIA GPU" (also AMD,
+Intel, Apple) as soon as the project has app versions for those resources. The web site
+decides by the **plan class name**: names containing `nvidia` or `cuda` count as NVIDIA,
+`ati` or `amd` as AMD, everything else as CPU.
+
+To feed CPU and GPU work separately, use two apps with their own plan classes, e.g.
+`gnina` (`docker_nvidia_cpu1`) and `gnina_cpu` (`docker_cpu1`, see MBlenn/boinc-apps). A plan
+class without `<gpu_type>` reserves no GPU, and `use_gpu = false` in `job.toml` keeps the GPU
+out of the container, so a host with one GPU runs a GPU task and CPU tasks side by side.
+
+## Cancelling jobs
+
+```bash
+podman exec <project>-daemons boinc-app cancel <app>
+```
+
+cancels all jobs of the app that have neither a valid result nor an error yet (via
+`bin/cancel_jobs --name`; `cancel_jobs` with an ID range would also flag finished ones).
+Unsent tasks are withdrawn, and clients are told to abort tasks in progress at their next
+scheduler request (`send_result_abort` in `config.xml`, set by `make_project`). Results that
+are already reported but not yet validated are cancelled as well.
+
 ## Where the results are
 
 The job output goes to the output file, not to stderr. `gpucheck` writes the `nvidia-smi`

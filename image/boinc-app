@@ -7,6 +7,7 @@ Run inside the daemons container (as root via `podman exec` or as boincadm):
     boinc-app install <app> [--from SRC]    register app, plan class, app version, templates, daemons
     boinc-app submit <app> [N]              create N jobs (default 1)
     boinc-app results <app>                 show the result files collected by the assimilator
+    boinc-app cancel <app>                  cancel all unfinished jobs of the app
 
 SRC is where the app definition comes from (default: the apps shipped in this image):
     https://github.com/OWNER/REPO[@REF]     a GitHub repository (REF: branch, tag or commit,
@@ -374,10 +375,44 @@ def cmd_submit(name, count):
         if job.get("args"):
             cmd += ["--command_line", job["args"]]
         run(cmd + files, root)
-        kind = job["name"].split("_")[1]
+        # <app>_<kind>_...: count per kind for the summary
+        rest = job["name"][len(n) + 1:] if job["name"].startswith(n + "_") else job["name"]
+        kind = rest.split("_")[0]
         kinds[kind] = kinds.get(kind, 0) + 1
     print(f"{len(jobs)} job(s) created for {n}: " +
           ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())))
+
+
+def open_workunits(root, appname):
+    """Names of the app's workunits that are neither finished nor cancelled."""
+    import MySQLdb  # python3-mysqldb
+    cfg = open(os.path.join(root, "config.xml"), encoding="utf-8").read()
+    get = lambda tag: (re.search(r"<%s>([^<]*)</%s>" % (tag, tag), cfg) or [None, ""])[1]
+    db = MySQLdb.connect(host=get("db_host") or "localhost", user=get("db_user"),
+                         passwd=get("db_passwd"), db=get("db_name"))
+    cur = db.cursor()
+    cur.execute("SELECT w.name FROM workunit w JOIN app a ON w.appid = a.id "
+                "WHERE a.name = %s AND w.canonical_resultid = 0 AND w.error_mask = 0 "
+                "ORDER BY w.id", (appname,))
+    names = [r[0] for r in cur.fetchall()]
+    db.close()
+    return names
+
+
+def cmd_cancel(name):
+    """Cancel unfinished jobs. bin/cancel_jobs with an ID range would also flag finished
+    workunits, so cancel by name. Unsent tasks are withdrawn; clients abort tasks in
+    progress at their next scheduler request (send_result_abort in config.xml)."""
+    root = project_root()
+    names = open_workunits(root, valid_name(name))
+    if not names:
+        print(f"no unfinished jobs for {name}")
+        return
+    failed = 0
+    for wu in names:
+        r = subprocess.run(["bin/cancel_jobs", "--name", wu], cwd=root)
+        failed += r.returncode != 0
+    print(f"{len(names) - failed} job(s) of {name} cancelled" + (f", {failed} failed" if failed else ""))
 
 
 def cmd_results(name):
@@ -413,6 +448,8 @@ def main():
         cmd_submit(args[1], int(args[2]) if len(args) == 3 else 1)
     elif cmd == "results" and len(args) == 2:
         cmd_results(args[1])
+    elif cmd == "cancel" and len(args) == 2:
+        cmd_cancel(args[1])
     else:
         print(__doc__)
         sys.exit(1)
