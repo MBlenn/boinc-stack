@@ -84,6 +84,26 @@ no secrets.
 | MariaDB major version (e.g. 12.3 → next LTS) | Change `Image=` in `<project>-db.container`, then `systemctl --user daemon-reload && systemctl --user restart <project>-db`. `MARIADB_AUTO_UPGRADE=1` upgrades the system tables. Run `backup.sh` first! | no |
 | BOINC release | Bump `BOINC_VERSION` in the workflow → new image `:<version>`. For each project, switch `Image=` in web/daemons and restart. The daemons container detects the new release, takes a DB dump and runs `tools/upgrade` (code + DB schema). | no, deliberately per project |
 
+**Picking up a new image right away** (instead of waiting for the daily timer): the containers
+are rootless, so run auto-update **as the project user**, not as root (root's Podman does not
+see them):
+
+```bash
+su - boinc-<project>
+podman auto-update --dry-run    # shows which containers have a newer image
+podman auto-update              # pulls it and restarts the affected units
+```
+
+For all projects at once, as root:
+
+```bash
+for u in $(getent passwd | cut -d: -f1 | grep '^boinc-'); do
+  id=$(id -u "$u"); echo "== $u"
+  runuser -u "$u" -- env XDG_RUNTIME_DIR=/run/user/$id \
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$id/bus podman auto-update
+done
+```
+
 ## For project admins
 
 ```bash
