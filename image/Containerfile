@@ -18,6 +18,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN git clone --depth 1 --branch "${BOINC_REF}" https://github.com/BOINC/boinc.git /usr/local/src/boinc
 
+# Fixes for bugs in the BOINC sources that are not (yet) fixed upstream, see boinc-patches/README.md
+COPY boinc-patches/ /tmp/boinc-patches/
+RUN cd /usr/local/src/boinc && for p in /tmp/boinc-patches/*.patch; do \
+        echo "applying $p"; git apply --verbose "$p" || exit 1; done
+
 WORKDIR /usr/local/src/boinc
 # The libraries are built first with explicit targets: programs in lib/, api/ and sched/
 # depend on ../lib/libboinc.la etc., whose rule starts a second make for the same library.

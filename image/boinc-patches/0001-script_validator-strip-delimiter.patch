@@ -1,0 +1,41 @@
+BOINC script_validator: --init_script "script files result_id" passes no arguments.
+
+split() in lib/str_util.cpp keeps the delimiter at the end of every part, so the
+keywords ("files ", "result_id ") never match. Applies to server_release/1.6/1.6.2
+and master as of 10/2026.
+
+diff --git a/sched/script_validator.cpp b/sched/script_validator.cpp
+index 6a34efc..3c2391d 100644
+--- a/sched/script_validator.cpp
++++ b/sched/script_validator.cpp
+@@ -64,16 +64,30 @@ using std::vector;
+ vector<string> init_script, compare_script;
+     // first element is script path, other elements are args
+ 
++// split() keeps the delimiter at the end of each part ("files "), which would
++// never match the argument keywords below; remove it and drop empty parts
++//
++static void strip_trailing_delim(vector<string>& v) {
++    vector<string> out;
++    for (string s: v) {
++        while (!s.empty() && s.back() == ' ') s.pop_back();
++        if (!s.empty()) out.push_back(s);
++    }
++    v = out;
++}
++
+ int validate_handler_init(int argc, char** argv) {
+     // handle project specific arguments here
+     for (int i=1; i<argc; i++) {
+         if (is_arg(argv[i], "init_script")) {
+             init_script = split(argv[++i], ' ');
++            strip_trailing_delim(init_script);
+             if (init_script.size() == 1) {
+                 init_script.push_back(string("files"));
+             }
+         } else if (is_arg(argv[i], "compare_script")) {
+             compare_script = split(argv[++i], ' ');
++            strip_trailing_delim(compare_script);
+             if (compare_script.size() == 1) {
+                 compare_script.push_back("files");
+                 compare_script.push_back("files2");

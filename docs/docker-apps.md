@@ -135,7 +135,11 @@ ASSIMILATOR=sample_assimilator --app <app>
 The trivial validator accepts every result, and the sample assimilator copies the output
 files to `<project dir>/results/`. Real apps need their own validator, e.g.
 `script_validator --app <app> --init_script "<script> files result_id"` with the script in
-`server/` (exit 0 = valid, 3 = retry later, anything else = invalid). Changing `VALIDATOR`
+`server/` (exit 0 = valid, 3 = retry later, anything else = invalid). The arguments only work
+with the patched script_validator of this image (`image/boinc-patches/`); unpatched BOINC
+calls the script without arguments. The output file paths contain the workunit name
+(`<workunit>_<instance>_r<random>_<index>`), so a script that only needs the file paths
+(`--init_script <script>` alone passes them) runs on any BOINC server. Changing `VALIDATOR`
 or `ASSIMILATOR` and running `install` again replaces the daemon entries in `config.xml`.
 
 App images that need more than `boinc-app-base` (binaries, libraries) are built in CI and
