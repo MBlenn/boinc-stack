@@ -199,6 +199,10 @@ def build_app_version(root, app):
     if os.path.isdir(vdir):
         print(f"app version {ver} ({app['PLAN_CLASS']}): directory exists, keeping it "
               "(raise APP_VERSION to deploy changed files)")
+        wrapper_name = f"docker_wrapper_{PLATFORM}_{sha8(WRAPPER)}"
+        if not os.path.exists(os.path.join(vdir, wrapper_name)):
+            print(f"WARNING: app version {ver} contains a different docker_wrapper than this "
+                  f"image ({wrapper_name}). Raise APP_VERSION to ship the image's wrapper.")
         return
     os.makedirs(vdir)
     # docker_wrapper: physical name carries a content hash, so different builds never collide
