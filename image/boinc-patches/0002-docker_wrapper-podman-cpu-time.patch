@@ -1,0 +1,109 @@
+BOINC docker_wrapper: wrong CPU time with Podman.
+
+Podman's "stats --no-stream" reports meaningless CPUPerc values for a single sample
+(e.g. 595360516.62%), so CPU time = 10 s x CPUPerc becomes absurd (the scheduler then
+caps it at elapsed time x ncpus). With Podman, use the container's cumulative CPU time
+({{.CPUNano}}) instead; fall back to CPUPerc if the field is not available. CPUPerc values
+above 100% x real number of CPUs are ignored. Written for server_release/1.6/1.6.2;
+master (10/2026) still uses CPUPerc but needs a rebased patch.
+
+diff --git a/samples/docker_wrapper/docker_wrapper.cpp b/samples/docker_wrapper/docker_wrapper.cpp
+index efea2aa..33970ff 100644
+--- a/samples/docker_wrapper/docker_wrapper.cpp
++++ b/samples/docker_wrapper/docker_wrapper.cpp
+@@ -166,12 +166,23 @@ enum JOB_STATUS {JOB_IN_PROGRESS, JOB_SUCCESS, JOB_FAIL};
+ struct RSC_USAGE {
+     double cpu_frac;
+     double wss;
++    double cpu_nsec;
++        // Podman: CPU time used by the container so far, in ns (-1: not available)
+     void clear() {
+         cpu_frac = 0;
+         wss = 0;
++        cpu_nsec = -1;
+     }
+ };
+ 
++// Podman's "stats --no-stream" CPUPerc is meaningless for a single sample
++// (values like 59536051662%), so with Podman we read the container's
++// cumulative CPU time (CPUNano) instead.
++// If that isn't supported, fall back to CPUPerc.
++//
++bool podman_cpu_nano = true;
++double last_cpu_nsec = -1;
++
+ // verbosity levels
+ #define VERBOSE_STD     1
+     // include only start/pause/end commands
+@@ -749,6 +760,33 @@ int get_stats(RSC_USAGE &ru) {
+     int retval;
+     size_t n;
+ 
++    ru.clear();
++    if (docker_type == PODMAN && podman_cpu_nano) {
++        snprintf(cmd, sizeof(cmd),
++            "stats --no-stream  --format \"{{.CPUNano}} {{.MemUsage}}\" %s",
++            container_name
++        );
++        retval = docker_conn.command(cmd, out);
++        if (!retval) {
++            double ns, mem;
++            char mem_unit=0;
++            for (const string& line: out) {
++                if (sscanf(line.c_str(), "%lf %lf%c", &ns, &mem, &mem_unit) == 3) {
++                    switch (mem_unit) {
++                    case 'G': case 'g': mem *= GIGA; break;
++                    case 'M': case 'm': mem *= MEGA; break;
++                    case 'K': case 'k': mem *= KILO; break;
++                    default: break;
++                    }
++                    ru.cpu_nsec = ns;
++                    ru.wss = mem;
++                    return 0;
++                }
++            }
++        }
++        fprintf(stderr, "Podman stats has no CPUNano; using CPUPerc\n");
++        podman_cpu_nano = false;
++    }
+ #ifdef __APPLE__
+     snprintf(cmd, sizeof(cmd),
+         "stats --no-stream  --format \"{{.CPUPerc}}\\ {{.MemUsage}}\" %s",
+@@ -798,6 +836,15 @@ int get_stats(RSC_USAGE &ru) {
+     default: return -1;
+     }
+     ru.cpu_frac = cpu_pct/100.;
++    // a container can't use more than all CPUs of the host
++    // (use the real number, not the client's possibly overridden ncpus)
++    //
++    long ncpus = sysconf(_SC_NPROCESSORS_ONLN);
++    if (ncpus < 1) ncpus = 1;
++    if (ru.cpu_frac < 0 || ru.cpu_frac > ncpus) {
++        fprintf(stderr, "implausible CPU usage %f%%, ignored\n", cpu_pct);
++        ru.cpu_frac = 0;
++    }
+     ru.wss = mem;
+     return 0;
+ }
+@@ -1190,7 +1237,20 @@ int main(int argc, char** argv) {
+             //
+             retval = get_stats(ru);
+             if (!retval) {
+-                cpu_time += STATUS_PERIOD*ru.cpu_frac;
++                if (ru.cpu_nsec >= 0) {
++                    // cumulative CPU time of the container: add what was used
++                    // since the last sample. The first sample after a restart
++                    // from a checkpoint only sets the baseline.
++                    //
++                    if (last_cpu_nsec < 0) {
++                        if (cpu_time == 0) cpu_time = ru.cpu_nsec/1e9;
++                    } else if (ru.cpu_nsec >= last_cpu_nsec) {
++                        cpu_time += (ru.cpu_nsec - last_cpu_nsec)/1e9;
++                    }
++                    last_cpu_nsec = ru.cpu_nsec;
++                } else {
++                    cpu_time += STATUS_PERIOD*ru.cpu_frac;
++                }
+                 if (config.verbose == VERBOSE_ALL) {
+                     fprintf(stderr, "reporting CPU %f WSS %f\n", cpu_time, ru.wss);
+                 }

@@ -102,6 +102,13 @@ init_project() {
 
     set_project_names
 
+    # retries of a job go to a different host (make_project default: same host allowed,
+    # so a host that fails a job gets it again until max_error_results is reached)
+    if ! grep -q "one_result_per_host_per_wu" "${PROOT}/config.xml"; then
+        as_boinc sed -i '0,/<config>/s//<config>\n        <one_result_per_host_per_wu>1<\/one_result_per_host_per_wu>/' \
+            "${PROOT}/config.xml"
+    fi
+
     echo "${IMAGE_REF}" | as_boinc tee "${PROOT}/.boinc_image_ref" >/dev/null
     log "project created."
 }

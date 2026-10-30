@@ -112,6 +112,16 @@ To feed CPU and GPU work separately, use two apps with their own plan classes, e
 class without `<gpu_type>` reserves no GPU, and `use_gpu = false` in `job.toml` keeps the GPU
 out of the container, so a host with one GPU runs a GPU task and CPU tasks side by side.
 
+## Retries on other hosts
+
+New projects get `<one_result_per_host_per_wu>1</one_result_per_host_per_wu>` in
+`config.xml`: when a task fails, the replacement task goes to a different host. Without it
+(the BOINC default) the same host may get the job again and again until
+`max_error_results` is reached. For existing projects, add the line inside `<config>`
+(as the project user, `/srv/boinc/<project>/boinc/<project>/config.xml`); the scheduler
+reads it with the next request. With a single test host, replacement tasks then wait
+until another host asks for work.
+
 ## Cancelling jobs
 
 ```bash
