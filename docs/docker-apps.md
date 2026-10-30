@@ -147,7 +147,7 @@ in boinc-apps:
 | `templates/in.xml`, `templates/out.xml` | input and output templates for `create_work`. Values set here override `create_work` options, so leave out anything `jobs.py` sets per job (e.g. `rsc_fpops_est`, `max_error_results`). |
 | `server/*` (optional) | scripts copied to the project's `bin/` (mode 755), e.g. a validator for `script_validator` |
 | `jobs.py` (optional) | `make_jobs(count, rng, stamp, testdata)` returns a list of jobs for `submit`: `{"name": ..., "inputs": [files in testdata/], "options": [create_work options], "args": "command line"}`. Without it, `submit` creates jobs without input files. |
-| `testdata/` (optional) | input files referenced by `jobs.py`. They are staged into the download hierarchy under a content-hashed name. |
+| `testdata/` (optional) | input files referenced by `jobs.py`. They are staged into the download hierarchy under a content-hashed name, once, and shared by all jobs, so every `<file_info>` in `templates/in.xml` needs `<no_delete/>` (otherwise the file deleter removes a file after the first job and later jobs fail with download errors; `install` warns about it, `boinc-app stage <app>` restores missing files). |
 
 `app.env` may also set the daemon command lines (defaults shown):
 

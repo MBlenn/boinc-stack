@@ -8,6 +8,7 @@ Run inside the daemons container (as root via `podman exec` or as boincadm):
     boinc-app submit <app> [N]              create N jobs (default 1)
     boinc-app results <app>                 show the result files collected by the assimilator
     boinc-app cancel <app>                  cancel all unfinished jobs of the app
+    boinc-app stage <app>                   (re)copy all test data files into the download area
 
 SRC is where the app definition comes from (default: the apps shipped in this image):
     https://github.com/OWNER/REPO[@REF]     a GitHub repository (REF: branch, tag or commit,
@@ -325,9 +326,44 @@ def cmd_install(name, src=None):
     build_app_version(root, app)
     install_templates(root, app)
     install_server_scripts(root, app)
+    check_shared_inputs(app)
     ensure_daemons(root, app)
     restart_daemons(root)
     print(f"\n{name} installed. Create jobs with: boinc-app submit {name} [N]")
+
+
+def check_shared_inputs(app):
+    """Staged test data files are shared by all jobs. Without <no_delete/> in the input
+    template the file deleter removes a file when the first job using it is finished."""
+    if not os.path.isdir(os.path.join(app["DIR"], "testdata")):
+        return
+    tpl = open(os.path.join(app["DIR"], "templates", "in.xml"), encoding="utf-8").read()
+    n_files = len(re.findall(r"<file_info>", tpl))
+    if n_files and len(re.findall(r"<no_delete\s*/>", tpl)) < n_files:
+        print("WARNING: templates/in.xml: not every <file_info> has <no_delete/>. Shared test data "
+              "files will be deleted after the first job and later jobs fail to download them.")
+
+
+def cmd_stage(name):
+    """Copy every test data file into the download hierarchy if it is missing there,
+    e.g. after the file deleter removed shared inputs."""
+    root, app = project_root(), load_app(name)
+    tdir = os.path.join(app["DIR"], "testdata")
+    if not os.path.isdir(tdir):
+        die(f"{name} has no testdata/")
+    restored = 0
+    for fn in sorted(os.listdir(tdir)):
+        path = os.path.join(tdir, fn)
+        if not os.path.isfile(path):
+            continue
+        phys = f"{app['APP_NAME']}_{sha8(path)}_{fn}"
+        dst = subprocess.run(["bin/dir_hier_path", phys], cwd=root, capture_output=True,
+                             text=True, check=True).stdout.strip()
+        if not os.path.exists(dst):
+            stage_input(root, app, path)
+            print(f"restored {phys}")
+            restored += 1
+    print(f"{name}: {restored} file(s) restored")
 
 
 def stage_input(root, app, path):
@@ -450,6 +486,8 @@ def main():
         cmd_results(args[1])
     elif cmd == "cancel" and len(args) == 2:
         cmd_cancel(args[1])
+    elif cmd == "stage" and len(args) == 2:
+        cmd_stage(args[1])
     else:
         print(__doc__)
         sys.exit(1)
