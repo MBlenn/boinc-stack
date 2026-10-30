@@ -21,7 +21,9 @@ repository changes only take effect after another install.
 
 An app definition (<source>/apps/<app>/) contains:
     app.env              APP_NAME, APP_TITLE, APP_VERSION, PLAN_CLASS,
-                         optional VALIDATOR / ASSIMILATOR (daemon command lines)
+                         optional VALIDATOR / ASSIMILATOR (daemon command lines),
+                         optional APP_BETA=1 (opt-in: only for volunteers who enabled
+                         "Run test applications" in their project preferences)
     plan_class.xml       <plan_class> block added to plan_class_spec.xml
     files/               Dockerfile, main.sh, job.toml, ... (@APP_VERSION@ is substituted)
     templates/in.xml     input template, templates/out.xml output template
@@ -191,6 +193,15 @@ def ensure_app_in_project_xml(root, app):
         open(path, "w", encoding="utf-8").write(xml)
         print(f"app {app['APP_NAME']}: added to project.xml")
     run(["bin/xadd"], root)
+    # xadd does not change existing apps: set the beta flag directly
+    beta = 1 if app.get("APP_BETA", "0").strip().lower() in ("1", "yes", "true") else 0
+    db = db_connect(root)
+    cur = db.cursor()
+    cur.execute("UPDATE app SET beta = %s WHERE name = %s", (beta, app["APP_NAME"]))
+    db.commit()
+    db.close()
+    print(f"app {app['APP_NAME']}: " + ("beta (opt-in via \"Run test applications\")" if beta
+                                        else "not beta (sent to everybody by default)"))
 
 
 def build_app_version(root, app):
@@ -223,6 +234,20 @@ def build_app_version(root, app):
         "<version>\n" + "".join(files) + "</version>\n")
     print(f"app version {ver} ({app['PLAN_CLASS']}): files prepared in {vdir}")
     run(["bin/update_versions", "--noconfirm"], root)
+
+
+def ensure_app_select_prefs(root):
+    """Let volunteers choose applications in their project preferences
+    ("Run only the selected applications")."""
+    path = os.path.join(root, "html", "project", "project.inc")
+    if not os.path.isfile(path):
+        return
+    src = open(path, encoding="utf-8").read()
+    new = re.sub(r"define\(\s*['\"]APP_SELECT_PREFS['\"]\s*,\s*false\s*\)",
+                 "define('APP_SELECT_PREFS', true)", src)
+    if new != src:
+        open(path, "w", encoding="utf-8").write(new)
+        print("project.inc: application selection in the project preferences enabled")
 
 
 def install_templates(root, app):
@@ -327,6 +352,7 @@ def cmd_install(name, src=None):
         app = load_app(name, snapshot_app(root, src_dir, name, origin))
     ensure_plan_class(root, app)
     ensure_app_in_project_xml(root, app)
+    ensure_app_select_prefs(root)
     build_app_version(root, app)
     install_templates(root, app)
     install_server_scripts(root, app)
@@ -423,13 +449,18 @@ def cmd_submit(name, count):
           ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())))
 
 
-def open_workunits(root, appname):
-    """Names of the app's workunits that are neither finished nor cancelled."""
+def db_connect(root):
+    """Connection to the project database (credentials from config.xml)."""
     import MySQLdb  # python3-mysqldb
     cfg = open(os.path.join(root, "config.xml"), encoding="utf-8").read()
     get = lambda tag: (re.search(r"<%s>([^<]*)</%s>" % (tag, tag), cfg) or [None, ""])[1]
-    db = MySQLdb.connect(host=get("db_host") or "localhost", user=get("db_user"),
-                         passwd=get("db_passwd"), db=get("db_name"))
+    return MySQLdb.connect(host=get("db_host") or "localhost", user=get("db_user"),
+                           passwd=get("db_passwd"), db=get("db_name"))
+
+
+def open_workunits(root, appname):
+    """Names of the app's workunits that are neither finished nor cancelled."""
+    db = db_connect(root)
     cur = db.cursor()
     cur.execute("SELECT w.name FROM workunit w JOIN app a ON w.appid = a.id "
                 "WHERE a.name = %s AND w.canonical_resultid = 0 AND w.error_mask = 0 "

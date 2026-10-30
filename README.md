@@ -126,7 +126,9 @@ They belong to the project user and can be edited directly, e.g. via SFTP.
 
 The image ships `docker_wrapper` and the tool `boinc-app` to deploy container-based BOINC
 apps into a project. The example app `gpucheck` reports whether an NVIDIA GPU is visible inside
-the container on the volunteer's host. See [docs/docker-apps.md](docs/docker-apps.md).
+the container on the volunteer's host. See [docs/docker-apps.md](docs/docker-apps.md) for
+operators and [docs/volunteer-setup.md](docs/volunteer-setup.md) for volunteers (Podman and
+NVIDIA setup of the BOINC client).
 
 Science apps live in a separate repository,
 [MBlenn/boinc-apps](https://github.com/MBlenn/boinc-apps) (e.g. `gnina`, GPU docking), and are
@@ -140,6 +142,8 @@ podman exec <project>-daemons boinc-app install gnina --from https://github.com/
 
 Early stage. Tested on a server host: image build in CI, rootless operation of several
 projects side by side (shared user/IPC namespace between web and daemons), Caddy routing of
-two projects on one address, scheduler, ops login and a `gpucheck` job on a volunteer host
-(Ubuntu, Podman, NVIDIA). Not covered yet: Windows (WSL) and AMD clients, backups/restore in
-practice, the VPS edge with Tailscale (prepared, see docs/edge.md).
+two projects on one address, scheduler, ops login, and Docker app jobs (`gpucheck`, GNINA
+docking on GPU and CPU) on a volunteer host (Ubuntu, Podman, NVIDIA). The VPS edge with
+Tailscale ([docs/edge.md](docs/edge.md)) is tested and runs reliably; if the VPS itself runs
+BOINC, leave a CPU core free for `tailscaled`, otherwise tunnel latency goes up. Not covered
+yet: Windows (WSL) and AMD clients, backups/restore in practice.

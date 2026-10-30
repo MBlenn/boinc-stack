@@ -1,4 +1,7 @@
-# Docker apps
+# Docker apps (for project operators)
+
+This page is for project operators. Volunteers find the client setup (Podman, NVIDIA
+Container Toolkit, joining a project) in [volunteer-setup.md](volunteer-setup.md).
 
 BOINC 1.6 can ship applications as container images. The volunteer's BOINC client receives
 the `docker_wrapper`, a `Dockerfile` and the app files, builds the image locally with
@@ -28,6 +31,10 @@ but the GPU was not passed into the container.
 
 Plan class `docker_nvidia`: only hosts that report Docker/Podman **and** an NVIDIA GPU get these jobs.
 
+A new project has no apps. Install gpucheck and keep a few jobs available, so that new
+volunteers can check their setup before they opt in to real workloads (see
+[Opt-in for test applications](#opt-in-for-test-applications)).
+
 ### On the server (as the project user)
 
 ```bash
@@ -55,41 +62,10 @@ and must contain `apps/<app>/`. `install` copies the app definition into the pro
 app's server scripts use that copy, so a project keeps working the same way until the app is
 installed again. `boinc-app list` shows the installed apps and their origin.
 
-### On the volunteer's host (Linux, NVIDIA)
+### Volunteers
 
-1. **BOINC client 8.2 or newer.** At startup the client looks for Podman first, then
-   Docker, and runs `hello-world` **as the user the client runs as** (`boinc` for the
-   distribution packages). If that test fails, the event log may not mention Docker or
-   Podman at all.
-2. **Make the container runtime usable for the client user** (Podman is recommended, it runs rootless):
-   - Podman: the client user needs subordinate IDs, then reset Podman's storage once:
-     ```bash
-     sudo usermod --add-subuids 500000-565535 --add-subgids 500000-565535 boinc
-     cd /tmp && sudo -u boinc podman system migrate
-     ```
-     The client service has no systemd user session, so Podman prints four warnings per command
-     and falls back to cgroupfs (which works). To silence them, set cgroupfs explicitly for the
-     client user (home directory of `boinc` on Debian/Ubuntu: `/var/lib/boinc`):
-     ```bash
-     sudo -u boinc mkdir -p /var/lib/boinc/.config/containers
-     printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' \
-       | sudo -u boinc tee /var/lib/boinc/.config/containers/containers.conf
-     ```
-   - Docker: `sudo usermod -aG docker boinc`. Members of the `docker` group are effectively root.
-3. **NVIDIA Container Toolkit** (package `nvidia-container-toolkit` from NVIDIA's apt repository,
-   see the [installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)):
-   - Podman: `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, check with `nvidia-ctk cdi list`.
-     Recent toolkit versions also install `nvidia-cdi-refresh.service`, which regenerates the
-     CDI specification after driver updates.
-   - Docker: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
-4. **Test as the client user** (run it from a directory the user can access, e.g. `/tmp`):
-   ```bash
-   cd /tmp && sudo -u boinc podman run --rm --gpus all docker.io/library/debian:trixie-slim nvidia-smi
-   # or: cd /tmp && sudo -u boinc docker run --rm --gpus all debian:trixie-slim nvidia-smi
-   ```
-5. Restart the BOINC client. The event log must show a line like `Docker: version 5.7.0 (podman)`.
-   If there is no such line, Podman/Docker does not work for the client user (see steps 2 to 4).
-   Then update the project.
+The client side (Podman for the BOINC user, NVIDIA Container Toolkit, tests, joining the
+project) is described in [volunteer-setup.md](volunteer-setup.md). Send new testers that page.
 
 ## Why app images must not use RUN
 
@@ -99,6 +75,19 @@ try to create a systemd scope and fail with "Access denied … interactive authe
 Pulling a base image does not need that, so everything the app needs is put into a base
 image on GHCR (`app-base/`, built by the same workflow). The GHCR package `boinc-app-base`
 must be public.
+
+## Opt-in for test applications
+
+Apps with `APP_BETA=1` in `app.env` are BOINC **beta apps**: their tasks only go to
+volunteers who enabled **"Run test applications?"** in their project preferences; everybody
+else only gets the other apps. `boinc-app install` sets the flag in the database (also for
+an app that is already installed) and enables **"Run only the selected applications"** in the
+project preferences (`APP_SELECT_PREFS` in `html/project/project.inc`).
+
+Recommended setup: `gpucheck` without `APP_BETA` (everybody gets it first), the science apps
+(e.g. `gnina`, `gnina_cpu` from boinc-apps) with `APP_BETA=1`. A new volunteer then runs
+gpucheck, sees a valid result, and opts in to the real apps afterwards. Volunteers who opt
+in get beta tasks first and the other apps when there are no beta tasks.
 
 ## CPU and GPU variants of an app
 
@@ -149,7 +138,7 @@ in boinc-apps:
 
 | File | Purpose |
 |---|---|
-| `app.env` | `APP_NAME`, `APP_TITLE`, `APP_VERSION`, `PLAN_CLASS` |
+| `app.env` | `APP_NAME`, `APP_TITLE`, `APP_VERSION`, `PLAN_CLASS`; optional `APP_BETA=1` (opt-in), `VALIDATOR`, `ASSIMILATOR` |
 | `plan_class.xml` | `<plan_class>` block, added to the project's `plan_class_spec.xml` |
 | `files/Dockerfile` | image built on the host. The slot directory is mounted at `/app`. **No `RUN` steps**: start `FROM ghcr.io/mblenn/boinc-app-base:trixie` (or another image that already contains everything, including `procps`) and only use `WORKDIR`, `COPY`, `ENV`, `CMD`. |
 | `files/job.toml` | docker_wrapper options, e.g. `use_gpu = true`, `image_name` (without `:tag`, see the comment in gpucheck's job.toml) |
@@ -175,6 +164,10 @@ calls the script without arguments. The output file paths contain the workunit n
 (`<workunit>_<instance>_r<random>_<index>`), so a script that only needs the file paths
 (`--init_script <script>` alone passes them) runs on any BOINC server. Changing `VALIDATOR`
 or `ASSIMILATOR` and running `install` again replaces the daemon entries in `config.xml`.
+
+The docker_wrapper (from the server image) is part of every app version. After a server
+image update with a new wrapper, raise `APP_VERSION` and run `install` again; `install`
+warns if an existing app version contains a different wrapper.
 
 App images that need more than `boinc-app-base` (binaries, libraries) are built in CI and
 pulled by the clients; the app's `files/Dockerfile` then only contains `FROM` that image plus
