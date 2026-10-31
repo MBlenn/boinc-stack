@@ -1,5 +1,6 @@
 #!/bin/sh
-# gpucheck: write what the container can see of the GPU to the output file "out".
+# gpucheck: write what the container can see of the GPU to the output file "out"
+# and to stderr, so volunteers see it on the task's page ("Stderr output") as well.
 # Always exits 0, so "no GPU visible" is reported as a result instead of an error.
 {
     echo "gpucheck @APP_VERSION@"
@@ -9,6 +10,8 @@
         echo "nvidia-smi: available"
         nvidia-smi --query-gpu=name,driver_version,memory.total,compute_cap \
             --format=csv,noheader 2>&1 || echo "nvidia-smi: query failed"
+        echo
+        nvidia-smi 2>&1
     else
         echo "nvidia-smi: not available (no GPU passed into the container)"
     fi
@@ -17,5 +20,5 @@
     else
         echo "devices: none"
     fi
-} > out 2>&1
+} 2>&1 | tee out >&2
 exit 0

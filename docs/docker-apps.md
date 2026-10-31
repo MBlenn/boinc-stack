@@ -111,6 +111,43 @@ New projects get `<one_result_per_host_per_wu>1</one_result_per_host_per_wu>` in
 reads it with the next request. With a single test host, replacement tasks then wait
 until another host asks for work.
 
+## Why does a host get no work?
+
+The scheduler log (`/srv/boinc/<project>/boinc/<project>/log_<project>-daemons/scheduler.log`)
+only shows "Sending reply ... 0 results" by default. For the reasons, add debug flags inside
+`<config>` in `config.xml` (read with the next request, no restart), and remove them later:
+
+```xml
+<debug_send/>
+<debug_send_scan/>
+<debug_send_job/>
+<debug_version_select/>
+<debug_prefs/>
+```
+
+The volunteer also sees the scheduler's messages in the client's event log after "Update"
+(e.g. preferences not allowing GPU work, not enough disk space).
+
+Check a volunteer's preferences and host in the database:
+
+```bash
+podman exec -it <project>-db sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" <project>'
+```
+
+```sql
+SELECT id, name, beta FROM app;                         -- which apps are beta (opt-in)
+SELECT id, name, project_prefs FROM user WHERE id = 2\G -- <allow_beta_work>1, <no_cuda>, <app_id>
+SELECT id, domain_name, serialnum, d_free, d_boinc_max FROM host WHERE id = 2\G
+SELECT a.name, COUNT(*) FROM result r JOIN workunit w ON r.workunitid = w.id
+  JOIN app a ON w.appid = a.id WHERE r.server_state = 2 GROUP BY a.name;  -- unsent tasks per app
+```
+
+In `project_prefs`: `<allow_beta_work>1</allow_beta_work>` = "Run test applications" on;
+`<no_cuda>1</no_cuda>` = NVIDIA GPU switched off; `<app_id>` entries inside `<apps_selected>`
+= "Run only the selected applications" (no entries = all apps). Preferences stored in a
+venue (home, work, school) apply only to hosts in that venue. `serialnum` lists the client
+version and the GPUs the host reported; `d_free` and `d_boinc_max` matter for large app images.
+
 ## Cancelling jobs
 
 ```bash
