@@ -1,106 +1,174 @@
-BOINC docker_wrapper: wrong CPU time with Podman.
+BOINC docker_wrapper: wrong CPU time with rootless Podman.
 
-Podman's "stats --no-stream" reports meaningless CPUPerc values for a single sample
-(e.g. 595360516.62%), so CPU time = 10 s x CPUPerc becomes absurd (the scheduler then
-caps it at elapsed time x ncpus). With Podman, use the container's cumulative CPU time
-({{.CPUNano}}) instead; fall back to CPUPerc if the field is not available. CPUPerc values
-above 100% x real number of CPUs are ignored. Written for server_release/1.6/1.6.2;
-master (10/2026) still uses CPUPerc but needs a rebased patch.
+The wrapper integrated CPUPerc of "stats --no-stream". Under the BOINC client service
+rootless Podman often has no cgroup of its own for the container (cgroupfs fallback, no
+systemd user session) and reports the enclosing cgroup: CPUPerc values like 595360516%
+and CPUNano equal to the CPU time of all BOINC tasks together (the client service).
+On Linux the CPU time is now the sum of utime+stime+cutime+cstime of the container's
+process tree from /proc (main process PID from "inspect"). Elsewhere CPUPerc is used,
+ignoring values above 100% x real number of CPUs.
+Written for server_release/1.6/1.6.2; master (10/2026) has the same problem but needs
+a rebased patch.
 
 diff --git a/samples/docker_wrapper/docker_wrapper.cpp b/samples/docker_wrapper/docker_wrapper.cpp
-index efea2aa..33970ff 100644
+index efea2aa..1f6100d 100644
 --- a/samples/docker_wrapper/docker_wrapper.cpp
 +++ b/samples/docker_wrapper/docker_wrapper.cpp
-@@ -166,12 +166,23 @@ enum JOB_STATUS {JOB_IN_PROGRESS, JOB_SUCCESS, JOB_FAIL};
+@@ -130,7 +130,12 @@
+ #include <cstdio>
+ #include <string>
+ #include <vector>
++#include <map>
+ #include <signal.h>
++#ifdef __linux__
++#include <dirent.h>
++#include <unistd.h>
++#endif
+ 
+ #include "toml.h"
+     // from https://github.com/mayah/tinytoml
+@@ -166,12 +171,29 @@ enum JOB_STATUS {JOB_IN_PROGRESS, JOB_SUCCESS, JOB_FAIL};
  struct RSC_USAGE {
      double cpu_frac;
      double wss;
-+    double cpu_nsec;
-+        // Podman: CPU time used by the container so far, in ns (-1: not available)
++    double cpu_secs;
++        // Linux: CPU time used by the container's processes so far (-1: unknown)
      void clear() {
          cpu_frac = 0;
          wss = 0;
-+        cpu_nsec = -1;
++        cpu_secs = -1;
      }
  };
  
-+// Podman's "stats --no-stream" CPUPerc is meaningless for a single sample
-+// (values like 59536051662%), so with Podman we read the container's
-+// cumulative CPU time (CPUNano) instead.
-+// If that isn't supported, fall back to CPUPerc.
++// CPU time accounting.
++// "stats --no-stream" CPUPerc is unreliable: with rootless Podman under the
++// BOINC client service the container often has no cgroup of its own
++// (cgroupfs fallback, no systemd user session), so Podman reports values
++// of the enclosing cgroup, e.g. 595360516.62% or the CPU time of all BOINC
++// tasks together. On Linux we therefore sum the CPU time of the container's
++// processes from /proc (user + system, including exited children).
++// The container's main process is a child of conmon/containerd in the host's
++// PID namespace and readable by the client user.
 +//
-+bool podman_cpu_nano = true;
-+double last_cpu_nsec = -1;
++double last_cpu_secs = -1;
++
++
 +
  // verbosity levels
  #define VERBOSE_STD     1
      // include only start/pause/end commands
-@@ -749,6 +760,33 @@ int get_stats(RSC_USAGE &ru) {
-     int retval;
-     size_t n;
+@@ -740,6 +762,73 @@ JOB_STATUS poll_app() {
+     return JOB_FAIL;
+ }
  
-+    ru.clear();
-+    if (docker_type == PODMAN && podman_cpu_nano) {
-+        snprintf(cmd, sizeof(cmd),
-+            "stats --no-stream  --format \"{{.CPUNano}} {{.MemUsage}}\" %s",
-+            container_name
-+        );
-+        retval = docker_conn.command(cmd, out);
-+        if (!retval) {
-+            double ns, mem;
-+            char mem_unit=0;
-+            for (const string& line: out) {
-+                if (sscanf(line.c_str(), "%lf %lf%c", &ns, &mem, &mem_unit) == 3) {
-+                    switch (mem_unit) {
-+                    case 'G': case 'g': mem *= GIGA; break;
-+                    case 'M': case 'm': mem *= MEGA; break;
-+                    case 'K': case 'k': mem *= KILO; break;
-+                    default: break;
-+                    }
-+                    ru.cpu_nsec = ns;
-+                    ru.wss = mem;
-+                    return 0;
-+                }
-+            }
-+        }
-+        fprintf(stderr, "Podman stats has no CPUNano; using CPUPerc\n");
-+        podman_cpu_nano = false;
++#ifdef __linux__
++int container_pid = 0;
++
++// PID of the container's main process (host PID namespace), 0 if unknown
++//
++int get_container_pid() {
++    char cmd[1024];
++    vector<string> out;
++    snprintf(cmd, sizeof(cmd),
++        "inspect --format \"{{.State.Pid}}\" %s", container_name
++    );
++    if (docker_conn.command(cmd, out)) return 0;
++    for (const string& line: out) {
++        int pid;
++        if (sscanf(line.c_str(), "%d", &pid) == 1 && pid > 0) return pid;
 +    }
- #ifdef __APPLE__
-     snprintf(cmd, sizeof(cmd),
-         "stats --no-stream  --format \"{{.CPUPerc}}\\ {{.MemUsage}}\" %s",
-@@ -798,6 +836,15 @@ int get_stats(RSC_USAGE &ru) {
++    return 0;
++}
++
++// sum of utime+stime+cutime+cstime (seconds) of root_pid and its descendants;
++// -1 if root_pid doesn't exist
++//
++double proc_tree_cpu(int root_pid) {
++    std::map<int, int> parent;
++    std::map<int, double> ticks;
++    DIR* d = opendir("/proc");
++    if (!d) return -1;
++    struct dirent* de;
++    while ((de = readdir(d))) {
++        int pid = atoi(de->d_name);
++        if (pid <= 0) continue;
++        char path[64], buf[1024];
++        snprintf(path, sizeof(path), "/proc/%d/stat", pid);
++        FILE* f = fopen(path, "r");
++        if (!f) continue;
++        size_t n = fread(buf, 1, sizeof(buf)-1, f);
++        fclose(f);
++        buf[n] = 0;
++        // the command name (field 2) may contain spaces: parse after the last ')'
++        char* p = strrchr(buf, ')');
++        if (!p) continue;
++        int ppid;
++        unsigned long long ut, st;
++        long long cut, cst;
++        if (sscanf(p+2,
++            "%*c %d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu %lld %lld",
++            &ppid, &ut, &st, &cut, &cst) != 5
++        ) continue;
++        parent[pid] = ppid;
++        ticks[pid] = (double)ut + st + cut + cst;
++    }
++    closedir(d);
++    if (!ticks.count(root_pid)) return -1;
++    double total = 0;
++    vector<int> todo(1, root_pid);
++    while (!todo.empty()) {
++        int pid = todo.back();
++        todo.pop_back();
++        total += ticks[pid];
++        for (auto& pp: parent) {
++            if (pp.second == pid) todo.push_back(pp.first);
++        }
++    }
++    return total/sysconf(_SC_CLK_TCK);
++}
++#endif
++
+ // Get CPU and mem usage.
+ // This is also surprisingly slow; do it every 10 sec
+ //
+@@ -798,6 +887,20 @@ int get_stats(RSC_USAGE &ru) {
      default: return -1;
      }
      ru.cpu_frac = cpu_pct/100.;
++#ifdef __linux__
 +    // a container can't use more than all CPUs of the host
-+    // (use the real number, not the client's possibly overridden ncpus)
++    // (the real number, not the client's possibly overridden ncpus)
 +    //
 +    long ncpus = sysconf(_SC_NPROCESSORS_ONLN);
 +    if (ncpus < 1) ncpus = 1;
-+    if (ru.cpu_frac < 0 || ru.cpu_frac > ncpus) {
-+        fprintf(stderr, "implausible CPU usage %f%%, ignored\n", cpu_pct);
-+        ru.cpu_frac = 0;
++    if (ru.cpu_frac < 0 || ru.cpu_frac > ncpus) ru.cpu_frac = 0;
++
++    if (!container_pid) container_pid = get_container_pid();
++    if (container_pid) {
++        ru.cpu_secs = proc_tree_cpu(container_pid);
++        if (ru.cpu_secs < 0) container_pid = 0;     // gone; look up again next time
 +    }
++#endif
      ru.wss = mem;
      return 0;
  }
-@@ -1190,7 +1237,20 @@ int main(int argc, char** argv) {
+@@ -1190,7 +1293,21 @@ int main(int argc, char** argv) {
              //
              retval = get_stats(ru);
              if (!retval) {
 -                cpu_time += STATUS_PERIOD*ru.cpu_frac;
-+                if (ru.cpu_nsec >= 0) {
-+                    // cumulative CPU time of the container: add what was used
-+                    // since the last sample. The first sample after a restart
-+                    // from a checkpoint only sets the baseline.
++                if (ru.cpu_secs >= 0) {
++                    // cumulative CPU time of the container's processes:
++                    // add what was used since the last sample.
++                    // The first sample after a restart from a checkpoint only
++                    // sets the baseline; a smaller value means a new container.
 +                    //
-+                    if (last_cpu_nsec < 0) {
-+                        if (cpu_time == 0) cpu_time = ru.cpu_nsec/1e9;
-+                    } else if (ru.cpu_nsec >= last_cpu_nsec) {
-+                        cpu_time += (ru.cpu_nsec - last_cpu_nsec)/1e9;
++                    if (last_cpu_secs < 0) {
++                        if (cpu_time == 0) cpu_time = ru.cpu_secs;
++                    } else if (ru.cpu_secs >= last_cpu_secs) {
++                        cpu_time += ru.cpu_secs - last_cpu_secs;
 +                    }
-+                    last_cpu_nsec = ru.cpu_nsec;
++                    last_cpu_secs = ru.cpu_secs;
 +                } else {
 +                    cpu_time += STATUS_PERIOD*ru.cpu_frac;
 +                }
