@@ -141,8 +141,22 @@ check_host() {
     fi
 }
 
+# BOINC's daemons only run in this container, and a new container has none running.
+# PID files left over from the previous container point to PIDs that now belong to
+# other processes: bin/stop (also called by tools/upgrade) would send them SIGHUP or,
+# for processes it may not signal, fail with "Couldn't stop project!" and abort the
+# upgrade. (bin/stop never removed its PID files under Python 3, see boinc-patches/0008.)
+clear_stale_pids() {
+    local d="${PROOT}/pid_$(hostname)"
+    if [ -d "${d}" ] && ls "${d}"/*.pid >/dev/null 2>&1; then
+        log "removing PID files of the previous container: $(cd "${d}" && echo *.pid)"
+        rm -f "${d}"/*.pid
+    fi
+}
+
 role_daemons() {
     wait_db
+    clear_stale_pids
     if [ ! -f "${PROOT}/config.xml" ]; then
         init_project
     else

@@ -1,0 +1,31 @@
+BOINC bin/start --stop: PID files were never removed under Python 3.
+
+stop_daemons() used map() for reading the PID files and for deleting them. In Python 3
+map() is lazy: the unlink map is never evaluated, so the PID files stay, and the second
+loop (waiting for the processes to end) gets an exhausted iterator and does not wait.
+An unreadable PID file gave PID 0, and os.kill(0, SIGHUP) signals the whole process
+group of bin/stop.
+With stale PID files, a later bin/stop (also run by tools/upgrade) signals whatever
+process now has these PIDs. In containers the PIDs are small and reused at once:
+tools/upgrade failed with "couldn't kill pid NN: Operation not permitted" /
+"Couldn't stop project!", or sent SIGHUP to an unrelated process.
+Now the PIDs and the unlinks are evaluated as lists, and PID 0 is skipped.
+
+diff --git a/sched/start b/sched/start
+index deab15d..e0ecf6c 100755
+--- a/sched/start
++++ b/sched/start
+@@ -541,8 +541,11 @@ def stop_daemons():
+     write_stop_daemons()
+     pid_files = glob.glob(os.path.join(pid_dir, '*.pid'))
+     count = 0
+-    pids = map(safe_read_int, pid_files)
+-    map(safe_unlink, pid_files)
++    # lists, not map(): under Python 3 map() is lazy, so the PID files were never
++    # removed and the second loop below (waiting for the processes) saw no PIDs
++    pids = [pid for pid in map(safe_read_int, pid_files) if pid]
++    for f in pid_files:
++        safe_unlink(f)
+     for pid in pids:
+         count += stop_daemon(pid)
+     for pid in pids:
