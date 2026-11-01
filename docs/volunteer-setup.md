@@ -127,9 +127,11 @@ Then:
   sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
   nvidia-ctk cdi list
   ```
-  Recent toolkit versions also install `nvidia-cdi-refresh.service`, which regenerates the
-  specification after driver updates. Without it, run the `generate` command again after
-  each driver update.
+  `nvidia-ctk cdi list` must show entries like `nvidia.com/gpu=0` and `nvidia.com/gpu=all`;
+  without them GPU tasks fail with "unresolvable CDI devices". Recent toolkit versions also
+  install `nvidia-cdi-refresh`, which regenerates the specification after driver updates
+  (`systemctl status nvidia-cdi-refresh.path`). Without it, **run the `generate` command
+  again after each driver update**.
 - Docker: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
 
 ## 4. Test as the BOINC user
@@ -245,6 +247,7 @@ inside the container in UTC.
 | Many "cgroupv2 manager is set to systemd" warnings in task output | `containers.conf` missing or in the wrong home directory (step 2) |
 | GPU task fails after a few seconds with "unknown flag: --gpus" in the task's output | Podman older than 5 with an app version built before the fix: wait for the next app version, or run CPU apps only |
 | Task fails after many minutes with "writing blob … unexpected EOF" or another error during "Copying blob" | the download of the application image was interrupted (unstable or slow connection; "no space left on device" would mean a full disk). Download it once by hand, repeat if it breaks off: `cd /tmp && sudo -u boinc podman pull <image from the FROM line in the task's output>`; later tasks then start within seconds |
+| GPU task fails with "unresolvable CDI devices nvidia.com/gpu=all" (older app versions: task hangs for hours with no CPU time, `podman ps -a` shows the container as "Created") | the CDI specification of the GPU is missing: `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, check with `nvidia-ctk cdi list` (step 3); remove hanging containers with `cd /tmp && sudo -u boinc podman rm -f <name>` |
 | GPU task fails, `nvidia-smi` missing or "no GPU" in the output | NVIDIA Container Toolkit / CDI specification missing or outdated (step 3) |
 | GPU tasks stopped working after a driver update | regenerate the CDI specification (step 3) |
 | Manual `podman` commands as `boinc` from a root shell fail ("unknown FS magic", runtime directory errors) | they run without the client's environment; not relevant as long as tasks run |

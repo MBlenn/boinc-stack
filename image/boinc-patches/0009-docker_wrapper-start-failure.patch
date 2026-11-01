@@ -1,0 +1,101 @@
+BOINC docker_wrapper: detect a failed container start.
+
+run_command() ignores the exit status of docker/podman commands, so a failing
+"podman start" (e.g. "setting up CDI devices: unresolvable CDI devices
+nvidia.com/gpu=all" when the NVIDIA CDI specification is missing) went unnoticed:
+the container stayed in state "Created", poll_app() only recognizes "Exited", and the
+task waited until the volunteer aborted it. The error message was at the beginning of
+stderr, which BOINC drops for long logs.
+ - "start" now captures its output (2>&1) and fails the task on "Error"; the message
+   is repeated at the end of the log, with a hint for CDI/GPU problems
+ - poll_app() fails the task if the container is still "Created" after 60 s
+Written for server_release/1.6/1.6.2 on top of 0002 and 0004 to 0007.
+
+diff --git a/samples/docker_wrapper/docker_wrapper.cpp b/samples/docker_wrapper/docker_wrapper.cpp
+index 16c49fd..736b19b 100644
+--- a/samples/docker_wrapper/docker_wrapper.cpp
++++ b/samples/docker_wrapper/docker_wrapper.cpp
+@@ -777,6 +777,38 @@ int create_container() {
+ 
+ //////////  JOB CONTROL  ////////////
+ 
++// Report why the container could not be started, at the end of the log
++// (BOINC keeps only the end of a task's stderr), with a hint for GPU problems.
++//
++void report_start_error(const string& msg) {
++    wlog("ERROR: the container could not be started:\n");
++    fprintf(stderr, "%s", msg.c_str());
++    if (!msg.empty() && msg.back() != '\n') fprintf(stderr, "\n");
++    if (msg.find("CDI") != string::npos || msg.find("nvidia") != string::npos) {
++        wlog("hint: the GPU could not be passed into the container. Check the NVIDIA "
++            "Container Toolkit and its CDI specification (nvidia-ctk cdi generate, "
++            "nvidia-ctk cdi list)\n"
++        );
++    }
++}
++
++// Start the container. run_command() ignores the exit status of the
++// docker/podman command, so a failure is recognized by "Error" in its
++// output (stderr is captured as well).
++// Returns 0 on success; on failure the error text is in msg.
++//
++int start_container(string& msg) {
++    char cmd[1024];
++    vector<string> out;
++    snprintf(cmd, sizeof(cmd), "start %s 2>&1", container_name);
++    int retval = docker_conn.command(cmd, out);
++    msg.clear();
++    for (string& line: out) msg += line;
++    if (retval) return retval;
++    if (msg.find("Error") != string::npos) return -1;
++    return 0;
++}
++
+ int container_op(const char *op) {
+     char cmd[1024];
+     vector<string> out;
+@@ -863,6 +895,12 @@ void poll_client_msgs() {
+ // Note: on both Podman and Docker this takes significant CPU time
+ // (like .03 sec) so do it infrequently (10 sec)
+ //
++// a container that stays in "Created" was never started (e.g. start failed
++// after a restart of the wrapper): give up after this many polls (10 s each)
++//
++#define MAX_CREATED_POLLS 6
++int created_polls = 0;
++
+ JOB_STATUS poll_app() {
+     char cmd[1024];
+     vector<string> out;
+@@ -884,6 +922,16 @@ JOB_STATUS poll_app() {
+                 container_exit_code = stoi(line);
+                 return JOB_SUCCESS;
+             }
++            if (strstr(line.c_str(), " Created ")) {
++                if (++created_polls >= MAX_CREATED_POLLS) {
++                    wlog("ERROR: container still not running after %d s (status Created)\n",
++                        created_polls*10
++                    );
++                    return JOB_FAIL;
++                }
++            } else {
++                created_polls = 0;
++            }
+             return JOB_IN_PROGRESS;
+         }
+     }
+@@ -1370,11 +1418,13 @@ int main(int argc, char** argv) {
+         if (config.verbose) {
+             wlog("starting container\n");
+         }
+-        retval = container_op("start");
++        string msg;
++        retval = start_container(msg);
+         if (retval) {
+             wlog("start failed: %d\n", retval);
+             container_op("kill");
+             cleanup();
++            report_start_error(msg);
+             boinc_finish(1);
+         }
+     }
