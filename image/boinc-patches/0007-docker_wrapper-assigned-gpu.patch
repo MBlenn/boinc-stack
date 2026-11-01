@@ -1,0 +1,39 @@
+BOINC docker_wrapper: use only the GPU assigned by the client.
+
+The wrapper passes all GPUs into the container ("--gpus all" or the CDI device
+"nvidia.com/gpu=all") and does not pass on which GPU the client assigned to the task
+(gpu_device_num in init_data.xml; the client does not add "--device N" to the command
+line of these apps either). On a host with several NVIDIA GPUs all tasks therefore ran
+on the first one (CUDA's default device) while the client counted the others as busy.
+The wrapper now sets CUDA_VISIBLE_DEVICES=<gpu_device_num> in the container for NVIDIA
+GPUs. It uses CUDA's device order, the same order the client numbers its NVIDIA devices
+in, not the PCI order of nvidia-smi and the CDI device names, so it also holds for
+hosts with different GPU models. nvidia-smi inside the container still lists all GPUs.
+A container that already exists (task restarted) keeps the device it was created with.
+Written for server_release/1.6/1.6.2 on top of 0002 and 0004 to 0006.
+
+diff --git a/samples/docker_wrapper/docker_wrapper.cpp b/samples/docker_wrapper/docker_wrapper.cpp
+index 62876cf..16c49fd 100644
+--- a/samples/docker_wrapper/docker_wrapper.cpp
++++ b/samples/docker_wrapper/docker_wrapper.cpp
+@@ -711,6 +711,20 @@ int create_container() {
+         } else {
+             strcat(cmd, " --gpus all");
+         }
++        // All GPUs are passed into the container, but the task must only use
++        // the one the client assigned to it. Otherwise all tasks of a host with
++        // several GPUs run on the first one (CUDA's default device).
++        // CUDA_VISIBLE_DEVICES uses CUDA's device order, the same order the
++        // client uses for its device numbers (not the PCI order of nvidia-smi
++        // and the CDI device names).
++        //
++        if (aid.gpu_device_num >= 0 && !strncasecmp(aid.gpu_type, "nvidia", 6)) {
++            snprintf(buf, sizeof(buf), " -e CUDA_VISIBLE_DEVICES=%d", aid.gpu_device_num);
++            strcat(cmd, buf);
++            wlog("GPU: %s device %d assigned by the client (CUDA_VISIBLE_DEVICES=%d)\n",
++                aid.gpu_type, aid.gpu_device_num, aid.gpu_device_num
++            );
++        }
+     }
+ 
+     // web graphics

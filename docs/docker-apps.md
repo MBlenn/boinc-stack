@@ -96,6 +96,17 @@ Recommended setup: `gpucheck` without `APP_BETA` (everybody gets it first), the 
 gpucheck, sees a valid result, and opts in to the real apps afterwards. Volunteers who opt
 in get beta tasks first and the other apps when there are no beta tasks.
 
+## Hosts with several GPUs
+
+The BOINC client runs one GPU task per GPU and assigns each task a device number. All GPUs
+are passed into the container; the wrapper sets `CUDA_VISIBLE_DEVICES` to the assigned
+device (patch `0007` in `image/boinc-patches/`), so CUDA programs inside the container
+only see that GPU, as device 0. Apps must therefore not choose a GPU themselves (no fixed
+`--device 1` or `CUDA_VISIBLE_DEVICES` in `main.sh`). `nvidia-smi` ignores the variable
+and lists all GPUs; gpucheck reports the assigned device separately. Without the patch
+(app versions with an older wrapper) all tasks of such a host ran on the first GPU.
+Not yet tested on a real host with several GPUs.
+
 ## CPU and GPU variants of an app
 
 BOINC's project preferences offer "Allow CPU-only tasks" and "Use NVIDIA GPU" (also AMD,

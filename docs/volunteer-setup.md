@@ -184,6 +184,14 @@ If that line is missing, Podman/Docker does not work for the client user: repeat
 The first task of a new application version downloads its image (several GB for GNINA) and
 therefore takes longer; later tasks start within seconds.
 
+## Several GPUs
+
+With two or more NVIDIA GPUs, BOINC runs one GPU task per GPU. Each task only uses the GPU
+BOINC assigned to it (from gpucheck 1.8 and gnina 1.7 on). The gpucheck result shows it as
+"assigned GPU (CUDA_VISIBLE_DEVICES): 0" or "1"; the `nvidia-smi` table below it still
+lists all GPUs. During a run, `nvidia-smi` on the host shows which GPU is busy. GPUs
+excluded in BOINC's `cc_config.xml` (`<exclude_gpu>`) get no tasks of the project.
+
 ## Disk space and container images
 
 Each application brings its programs as a **container image**: a packed, read-only
