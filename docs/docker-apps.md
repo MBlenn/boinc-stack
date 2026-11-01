@@ -257,7 +257,7 @@ in boinc-apps:
 
 | File | Purpose |
 |---|---|
-| `app.env` | `APP_NAME`, `APP_TITLE`, `APP_VERSION`, `PLAN_CLASS`; optional `APP_BETA=1` (opt-in), `MAX_IN_PROGRESS=N` (tasks per host, see [Large job batches](#large-job-batches)), `VALIDATOR`, `ASSIMILATOR` |
+| `app.env` | `APP_NAME`, `APP_TITLE` (name shown to volunteers; `install` also updates it for an installed app), `APP_VERSION`, `PLAN_CLASS`; optional `APP_BETA=1` (opt-in), `MAX_IN_PROGRESS=N` (tasks per host, see [Large job batches](#large-job-batches)), `VALIDATOR`, `ASSIMILATOR` |
 | `plan_class.xml` | `<plan_class>` block, added to the project's `plan_class_spec.xml` |
 | `files/Dockerfile` | image built on the host. The slot directory is mounted at `/app`. **No `RUN` steps**: start `FROM ghcr.io/mblenn/boinc-app-base:trixie` (or another image that already contains everything, including `procps`) and only use `WORKDIR`, `COPY`, `ENV`, `CMD`. |
 | `files/job.toml` | docker_wrapper options, e.g. `use_gpu = true`, `image_name` (without `:tag`, see the comment in gpucheck's job.toml) |

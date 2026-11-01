@@ -183,27 +183,45 @@ def ensure_plan_class(root, app):
 
 
 def ensure_app_in_project_xml(root, app):
+    """Register the app (project.xml, bin/xadd) and keep its title and beta flag in sync.
+
+    xadd only adds new apps and never changes existing ones, so APP_TITLE and APP_BETA
+    are written to project.xml and the database directly on every install."""
     path = os.path.join(root, "project.xml")
     xml = open(path, encoding="utf-8").read()
-    if re.search(r"<name>\s*%s\s*</name>" % re.escape(app["APP_NAME"]), xml):
-        print(f"app {app['APP_NAME']}: already in project.xml")
+    n = app["APP_NAME"]
+    title = html.escape(app["APP_TITLE"], quote=False)
+    block = re.search(r"<app>(?:(?!</app>).)*?<name>\s*%s\s*</name>.*?</app>" % re.escape(n), xml, re.S)
+    if block:
+        old = block.group(0)
+        if re.search(r"<user_friendly_name>.*?</user_friendly_name>", old, re.S):
+            upd = re.sub(r"<user_friendly_name>.*?</user_friendly_name>",
+                         lambda _: f"<user_friendly_name>{title}</user_friendly_name>", old, count=1, flags=re.S)
+        else:
+            upd = old.replace("</app>", f"    <user_friendly_name>{title}</user_friendly_name>\n    </app>", 1)
+        if upd != old:
+            xml = xml.replace(old, upd, 1)
+            open(path, "w", encoding="utf-8").write(xml)
+            print(f"app {n}: title in project.xml updated")
+        else:
+            print(f"app {n}: already in project.xml")
     else:
         entry = ("    <app>\n"
-                 f"        <name>{app['APP_NAME']}</name>\n"
-                 f"        <user_friendly_name>{app['APP_TITLE']}</user_friendly_name>\n"
+                 f"        <name>{n}</name>\n"
+                 f"        <user_friendly_name>{title}</user_friendly_name>\n"
                  "    </app>\n")
         xml = xml.replace("</boinc>", entry + "</boinc>")
         open(path, "w", encoding="utf-8").write(xml)
-        print(f"app {app['APP_NAME']}: added to project.xml")
+        print(f"app {n}: added to project.xml")
     run(["bin/xadd"], root)
-    # xadd does not change existing apps: set the beta flag directly
     beta = 1 if app.get("APP_BETA", "0").strip().lower() in ("1", "yes", "true") else 0
     db = db_connect(root)
     cur = db.cursor()
-    cur.execute("UPDATE app SET beta = %s WHERE name = %s", (beta, app["APP_NAME"]))
+    cur.execute("UPDATE app SET beta = %s, user_friendly_name = %s WHERE name = %s",
+                (beta, app["APP_TITLE"], n))
     db.commit()
     db.close()
-    print(f"app {app['APP_NAME']}: " + ("beta (opt-in via \"Run test applications\")" if beta
+    print(f"app {n}: title \"{app['APP_TITLE']}\", " + ("beta (opt-in via \"Run test applications\")" if beta
                                         else "not beta (sent to everybody by default)"))
 
 
