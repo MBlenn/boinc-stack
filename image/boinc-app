@@ -23,7 +23,9 @@ An app definition (<source>/apps/<app>/) contains:
     app.env              APP_NAME, APP_TITLE, APP_VERSION, PLAN_CLASS,
                          optional VALIDATOR / ASSIMILATOR (daemon command lines),
                          optional APP_BETA=1 (opt-in: only for volunteers who enabled
-                         "Run test applications" in their project preferences)
+                         "Run test applications" in their project preferences),
+                         optional MAX_IN_PROGRESS=N (at most N tasks of the app in
+                         progress per host, config_aux.xml)
     plan_class.xml       <plan_class> block added to plan_class_spec.xml
     files/               Dockerfile, main.sh, job.toml, ... (@APP_VERSION@ is substituted)
     templates/in.xml     input template, templates/out.xml output template
@@ -32,6 +34,7 @@ An app definition (<source>/apps/<app>/) contains:
                          without it, jobs without input files are created
     testdata/            optional: input files referenced by jobs.py
 """
+import gzip
 import hashlib
 import importlib.util
 import random
@@ -301,6 +304,47 @@ def ensure_daemons(root, app):
         print("daemons: already configured")
 
 
+def ensure_job_limit(root, app):
+    """MAX_IN_PROGRESS=N in app.env: at most N tasks of this app in progress per host
+    (<max_jobs_in_progress> in config_aux.xml, read by the scheduler with every request).
+
+    An existing <app> entry for this app is replaced; other entries are kept.
+    Without MAX_IN_PROGRESS, config_aux.xml is not touched."""
+    limit = app.get("MAX_IN_PROGRESS", "").strip()
+    if not limit:
+        return
+    if not limit.isdigit() or int(limit) < 1:
+        die(f"MAX_IN_PROGRESS must be a positive number, not '{limit}'")
+    path = os.path.join(root, "config_aux.xml")
+    if os.path.exists(path):
+        xml = open(path, encoding="utf-8").read()
+    else:
+        xml = "<config>\n</config>\n"
+    if "</config>" not in xml:
+        print(f"WARNING: {path} has no <config> element, job limit not set")
+        return
+    if "</max_jobs_in_progress>" not in xml:
+        xml = re.sub(r"[ \t]*</config>",
+                     lambda _: "    <max_jobs_in_progress>\n    </max_jobs_in_progress>\n</config>", xml, count=1)
+    n = app["APP_NAME"]
+    entry = ("        <app>\n"
+             f"            <app_name>{n}</app_name>\n"
+             f"            <total_limit><jobs>{limit}</jobs></total_limit>\n"
+             "        </app>\n")
+    old = re.search(r"[ \t]*<app>(?:(?!</app>).)*<app_name>\s*%s\s*</app_name>.*?</app>[ \t]*\n?"
+                    % re.escape(n), xml, re.S)
+    if old and old.group(0) == entry:
+        print(f"job limit: {limit} task(s) of {n} in progress per host (unchanged)")
+        return
+    if old:
+        xml = xml.replace(old.group(0), entry, 1)
+    else:
+        xml = re.sub(r"[ \t]*</max_jobs_in_progress>",
+                     lambda _: entry + "    </max_jobs_in_progress>", xml, count=1)
+    open(path, "w", encoding="utf-8").write(xml)
+    print(f"job limit: {limit} task(s) of {n} in progress per host (config_aux.xml)")
+
+
 def restart_daemons(root):
     # the feeder only learns about new apps and app versions at startup
     run(["bin/stop"], root)
@@ -358,6 +402,7 @@ def cmd_install(name, src=None):
     install_server_scripts(root, app)
     check_shared_inputs(app)
     ensure_daemons(root, app)
+    ensure_job_limit(root, app)
     restart_daemons(root)
     print(f"\n{name} installed. Create jobs with: boinc-app submit {name} [N]")
 
@@ -496,8 +541,16 @@ def cmd_results(name):
                 continue
             found = True
             path = os.path.join(dirpath, fn)
-            print(f"=== {os.path.relpath(path, root)}")
-            print(open(path, encoding="utf-8", errors="replace").read().rstrip())
+            data = open(path, "rb").read()
+            note = ""
+            if data[:2] == b"\x1f\x8b":         # gzip-compressed output (e.g. gnina 1.5+)
+                try:
+                    data = gzip.decompress(data)
+                    note = " (gzip, shown uncompressed)"
+                except (OSError, EOFError) as e:
+                    note = f" (gzip, cannot decompress: {e})"
+            print(f"=== {os.path.relpath(path, root)}{note}")
+            print(data.decode("utf-8", errors="replace").rstrip())
     if not found:
         print(f"no results for {app['APP_NAME']} in {rdir} yet")
 

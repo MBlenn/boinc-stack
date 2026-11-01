@@ -82,6 +82,7 @@ no secrets.
 | Debian, Apache, PHP (security) | The GitHub Action rebuilds the image weekly under the same tag (`1.6.2`). Each project user's `podman-auto-update.timer` pulls it and restarts the containers. | yes |
 | MariaDB patch releases | Tag `12.3` (LTS) is updated upstream and pulled by auto-update | yes |
 | MariaDB major version (e.g. 12.3 → next LTS) | Change `Image=` in `<project>-db.container`, then `systemctl --user daemon-reload && systemctl --user restart <project>-db`. `MARIADB_AUTO_UPGRADE=1` upgrades the system tables. Run `backup.sh` first! | no |
+| Quadlet units (`project-template/quadlet/`) | `new-project.sh` writes them once per project; template changes only reach new projects. For existing projects, apply the change to `~/.config/containers/systemd/<project>-*.container` of the project user, then `systemctl --user daemon-reload` and restart the units (e.g. the fixed hostname of the web container, see [docs/docker-apps.md](docs/docker-apps.md#fixed-hostname-of-the-web-container)) | no |
 | BOINC release | Bump `BOINC_VERSION` in the workflow → new image `:<version>`. For each project, switch `Image=` in web/daemons and restart. The daemons container detects the new release, takes a DB dump and runs `tools/upgrade` (code + DB schema). | no, deliberately per project |
 
 **Picking up a new image right away** (instead of waiting for the daily timer): the containers

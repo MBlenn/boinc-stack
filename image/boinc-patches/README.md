@@ -9,6 +9,7 @@ the fix is included upstream and remove the patch, or rebase it.
 | `0001-script_validator-strip-delimiter.patch` | `script_validator --init_script "script files result_id"` calls the script without arguments, because `split()` keeps the trailing space in each part | not yet reported |
 | `0002-docker_wrapper-podman-cpu-time.patch` | with rootless Podman under the client service the container has no cgroup of its own, and `podman stats` reports the enclosing cgroup (absurd CPUPerc; CPUNano = CPU time of all BOINC tasks). On Linux the wrapper sums the CPU time of the container's processes from `/proc` instead | not yet reported |
 | `0003-ops-user-administration.patch` | admin pages: project preferences per venue and the user's computers on "Manage user", status messages after updating special user status or suspensions, users by registration date with expandable details | not yet proposed |
+| `0004-docker_wrapper-image-cleanup.patch` | apps with `image_name` in `job.toml` get one image per app version, but the client only removes its own `boinc__…` images: old app images and base images pile up on the volunteer's host (several GB per GPU app version). After building a new image the wrapper removes older versions of the app's image, other tags of its base image (`FROM`) and dangling images; images in use by a container are kept | not yet reported |
 
 The image's BOINC version string (`BOINC_REF` in the image, `.boinc_image_ref` in the
 project) carries a hash of these patches, e.g. `server_release/1.6/1.6.2+p1a2b3c4d`.

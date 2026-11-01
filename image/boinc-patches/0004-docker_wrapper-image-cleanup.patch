@@ -1,0 +1,123 @@
+BOINC docker_wrapper: remove images of older app versions.
+
+Apps that set image_name in job.toml (e.g. "boinc-stack-gnina-1.4") get one image per
+app version, and the client only removes its own "boinc__..." images. Each new app
+version therefore left the previous image (and the base image it was built FROM) in
+the volunteer's container storage, several GB each for GPU apps.
+After building a new image, the wrapper now removes
+ - local images "<name>-<other version>" of the same app,
+ - other tags of the base image repository named in the Dockerfile's FROM line,
+ - dangling images ("image prune -f").
+Podman and Docker refuse to remove images that are used by a container, so images of
+tasks still running with an older version stay until the next cleanup.
+Written for server_release/1.6/1.6.2 on top of 0002.
+
+diff --git a/samples/docker_wrapper/docker_wrapper.cpp b/samples/docker_wrapper/docker_wrapper.cpp
+index 1f6100d..ca2615f 100644
+--- a/samples/docker_wrapper/docker_wrapper.cpp
++++ b/samples/docker_wrapper/docker_wrapper.cpp
+@@ -453,6 +453,95 @@ int build_image() {
+     return 0;
+ }
+ 
++// Remove images of older versions of this app after building a new one.
++// Only for apps that name their image in job.toml (image_name = "<name>-<version>");
++// BOINC's own per-job images (boinc__...) are removed by the client.
++//  - local app images "<name>-<other version>"
++//  - other tags of the base image repository (FROM in the Dockerfile),
++//    e.g. ghcr.io/x/app:1.0-1 when the Dockerfile now uses :1.0-2
++//  - dangling images
++// Podman/Docker refuse to remove images still used by a container
++// (e.g. a running task of an older app version), so this is safe.
++//
++static bool is_version(const string& s) {
++    if (s.empty() || !isdigit(s[0])) return false;
++    for (char c: s) {
++        if (!isdigit(c) && c != '.') return false;
++    }
++    return true;
++}
++
++static void remove_image(const char* ref) {
++    char cmd[1024];
++    vector<string> out;
++    // stderr discarded: "image is in use by a container" is expected
++    // for older versions still running; run_command() ignores the exit status,
++    // so success is recognized by the output ("Untagged: ...", "Deleted: ...")
++    snprintf(cmd, sizeof(cmd), "image rm %s 2>/dev/null", ref);
++    if (docker_conn.command(cmd, out) == 0 && !out.empty()) {
++        fprintf(stderr, "removed old image %s\n", ref);
++    }
++}
++
++void cleanup_old_images() {
++    if (config.image_name.empty()) return;
++
++    // our name without the version: "boinc-stack-gnina-1.4" -> "boinc-stack-gnina-"
++    string name = image_name;
++    size_t dash = name.rfind('-');
++    if (dash == string::npos || !is_version(name.substr(dash+1))) return;
++    string stem = name.substr(0, dash+1);
++
++    // base image from the Dockerfile ("FROM repo:tag")
++    string base_repo, base_tag;
++    FILE* f = fopen(dockerfile, "r");
++    if (f) {
++        char buf[1024];
++        while (fgets(buf, sizeof(buf), f)) {
++            char from[512];
++            if (sscanf(buf, " FROM %511s", from) == 1 || sscanf(buf, " from %511s", from) == 1) {
++                string ref = from;
++                size_t colon = ref.rfind(':');
++                size_t slash = ref.rfind('/');
++                if (colon != string::npos && (slash == string::npos || colon > slash)) {
++                    base_repo = ref.substr(0, colon);
++                    base_tag = ref.substr(colon+1);
++                }
++                break;
++            }
++        }
++        fclose(f);
++    }
++
++    vector<string> out, base_refs;
++    if (docker_conn.command("images --format \"{{.Repository}}:{{.Tag}}\"", out)) return;
++    for (string line: out) {
++        strip_whitespace(line);
++        size_t colon = line.rfind(':');
++        if (colon == string::npos) continue;
++        string repo = line.substr(0, colon);
++        string tag = line.substr(colon+1);
++        string short_repo = repo;
++        if (short_repo.rfind("localhost/", 0) == 0) short_repo = short_repo.substr(10);
++
++        // older versions of this app's image
++        if (short_repo != name
++            && short_repo.rfind(stem, 0) == 0
++            && is_version(short_repo.substr(stem.size()))
++        ) {
++            remove_image(line.c_str());
++        }
++        // other tags of the base image
++        if (!base_repo.empty() && repo == base_repo && tag != base_tag && tag != "<none>") {
++            base_refs.push_back(line);
++        }
++    }
++    for (string& ref: base_refs) {
++        remove_image(ref.c_str());
++    }
++    docker_conn.command("image prune -f 2>/dev/null", out);
++}
++
+ // build image if needed
+ //
+ int get_image() {
+@@ -473,6 +562,8 @@ int get_image() {
+             fprintf(stderr, "build_image() failed: %d\n", retval);
+             exit(1);
+         }
++        // a new image (i.e. a new app version): remove older ones
++        cleanup_old_images();
+     }
+     return 0;
+ }

@@ -15,7 +15,9 @@ PublishPort=127.0.0.1:${WEB_PORT}:8080
 # boincadm (UID 1000 in the container) = project user on the host -> files belong to it.
 # --user=0:0: the entrypoint starts as (namespace) root and drops to boincadm itself.
 # Shareable IPC: the scheduler (here) reads the feeder's shared memory (daemons).
-PodmanArgs=--userns=keep-id:uid=1000,gid=1000 --user=0:0 --ipc=shareable
+# Fixed hostname: the scheduler and the upload handler log to log_<hostname>/ in the
+# project directory; without it a new container ID (and log directory) per restart.
+PodmanArgs=--userns=keep-id:uid=1000,gid=1000 --user=0:0 --ipc=shareable --hostname=${PROJECT}-web
 
 # Pick up rebuilt images under the same tag (weekly rebuild) via podman-auto-update.timer
 AutoUpdate=registry

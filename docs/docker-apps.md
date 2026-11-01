@@ -33,7 +33,10 @@ Plan class `docker_nvidia`: only hosts that report Docker/Podman **and** an NVID
 
 A new project has no apps. Install gpucheck and keep a few jobs available, so that new
 volunteers can check their setup before they opt in to real workloads (see
-[Opt-in for test applications](#opt-in-for-test-applications)).
+[Opt-in for test applications](#opt-in-for-test-applications)). Keep that pool small (a
+handful of unsent jobs, topped up now and then): every unsent job takes a slot in the
+feeder's buffer, see [Large job batches](#large-job-batches). gpucheck sets
+`MAX_IN_PROGRESS=1`, so a host gets one gpucheck task at a time.
 
 ### On the server (as the project user)
 
@@ -46,7 +49,9 @@ podman exec <project>-daemons boinc-app results gpucheck
 ```
 
 `install` can be repeated safely. To deploy changed app files, raise `APP_VERSION` in
-`image/apps/<app>/app.env`, rebuild the image and run `install` again.
+`image/apps/<app>/app.env`, rebuild the image and run `install` again. Apps shipped in the
+image (like gpucheck) are not updated in the projects automatically: after a server image
+update with a new version of such an app, run `boinc-app install <app>` once per project.
 
 ### Apps from another repository
 
@@ -113,8 +118,9 @@ until another host asks for work.
 
 ## Why does a host get no work?
 
-The scheduler log (`/srv/boinc/<project>/boinc/<project>/log_<project>-daemons/scheduler.log`)
-only shows "Sending reply ... 0 results" by default. For the reasons, add debug flags inside
+The scheduler log (`/srv/boinc/<project>/boinc/<project>/log_<project>-web/scheduler.log`;
+the scheduler runs in the web container and logs to `log_<hostname>`, see
+[Fixed hostname of the web container](#fixed-hostname-of-the-web-container)) only shows "Sending reply ... 0 results" by default. For the reasons, add debug flags inside
 `<config>` in `config.xml` (read with the next request, no restart), and remove them later:
 
 ```xml
@@ -148,6 +154,73 @@ In `project_prefs`: `<allow_beta_work>1</allow_beta_work>` = "Run test applicati
 venue (home, work, school) apply only to hosts in that venue. `serialnum` lists the client
 version and the GPUs the host reported; `d_free` and `d_boinc_max` matter for large app images.
 
+Other reasons seen in practice:
+
+- `one_result_per_user_per_wu` set to 1 in `config.xml`: a user then never gets a second
+  task of a job, even on another host. With a few testers sharing jobs this starves hosts
+  quickly. Keep it at 0 (the default) and use `one_result_per_host_per_wu` instead (see
+  [Retries on other hosts](#retries-on-other-hosts)).
+- The feeder's buffer is full of jobs of another app, see [Large job batches](#large-job-batches).
+
+## Fixed hostname of the web container
+
+The scheduler and the upload handler run in the web container and write their logs to
+`log_<hostname>/` in the project directory. New projects set the hostname
+`<project>-web` in the web Quadlet (`--hostname` in `PodmanArgs`, like `<project>-daemons`
+for the daemons container). Without it the hostname is the container ID, which changes
+with every new container (e.g. after an image update), so each one starts a new log
+directory. For an existing project, add `--hostname=<project>-web` to the `PodmanArgs=`
+line in `~/.config/containers/systemd/<project>-web.container` of the project user, then
+`systemctl --user daemon-reload` and restart the web and daemons units. The old
+`log_<container id>/` directories can be deleted.
+
+## Large job batches
+
+**Feeder buffer.** The feeder keeps a buffer of unsent tasks in shared memory (100 slots by
+default, `<shmem_work_items>` in `config.xml`), and the scheduler only sends tasks from that
+buffer. By default it fills the buffer in database order, so 10,000 unsent jobs of one app
+can keep the buffer full while the jobs of another app (e.g. gpucheck) never get a slot,
+and hosts that can only run the other app get no work. Remedies:
+
+- keep per-app pools of auxiliary apps small (gpucheck: a handful of jobs) and submit large
+  batches in portions (e.g. `boinc-app submit gnina 2000` every few hours instead of 100,000
+  at once)
+- or start the feeder with `--allapps` (`<cmd>feeder -d 3 --allapps</cmd>` in `config.xml`):
+  it then reserves slots for every app, in proportion to the app's `weight` column in the
+  `app` table (default 1), e.g. `UPDATE app SET weight = 5 WHERE name = 'gnina';`. Restart
+  the daemons afterwards.
+
+**Tasks per host.** `MAX_IN_PROGRESS=N` in `app.env` limits the tasks of an app in progress
+per host: `install` writes an entry into `config_aux.xml` (created if missing):
+
+```xml
+<config>
+    <max_jobs_in_progress>
+        <app>
+            <app_name>gpucheck</app_name>
+            <total_limit><jobs>1</jobs></total_limit>
+        </app>
+    </max_jobs_in_progress>
+</config>
+```
+
+An existing entry of the same app is replaced (also a hand-written one, e.g. with
+`<gpu_limit>`), other entries are kept. Without `MAX_IN_PROGRESS`, `install` does not touch
+the file. The scheduler reads `config_aux.xml` with every request.
+
+**Database size.** Every job leaves rows in `workunit` and `result` after it is finished
+(the file deleter only removes the files). For runs of 100,000 jobs and more, add the
+`db_purge` daemon, which archives finished jobs to XML files (`archives/`) and deletes them
+from the database a while after they are assimilated, e.g. inside `<daemons>`:
+
+```xml
+<daemon>
+    <cmd>db_purge --min_age_days 7 --gzip --daily_dir</cmd>
+</daemon>
+```
+
+Purged jobs disappear from the volunteers' task lists on the web site; their credit stays.
+
 ## Cancelling jobs
 
 ```bash
@@ -175,7 +248,7 @@ in boinc-apps:
 
 | File | Purpose |
 |---|---|
-| `app.env` | `APP_NAME`, `APP_TITLE`, `APP_VERSION`, `PLAN_CLASS`; optional `APP_BETA=1` (opt-in), `VALIDATOR`, `ASSIMILATOR` |
+| `app.env` | `APP_NAME`, `APP_TITLE`, `APP_VERSION`, `PLAN_CLASS`; optional `APP_BETA=1` (opt-in), `MAX_IN_PROGRESS=N` (tasks per host, see [Large job batches](#large-job-batches)), `VALIDATOR`, `ASSIMILATOR` |
 | `plan_class.xml` | `<plan_class>` block, added to the project's `plan_class_spec.xml` |
 | `files/Dockerfile` | image built on the host. The slot directory is mounted at `/app`. **No `RUN` steps**: start `FROM ghcr.io/mblenn/boinc-app-base:trixie` (or another image that already contains everything, including `procps`) and only use `WORKDIR`, `COPY`, `ENV`, `CMD`. |
 | `files/job.toml` | docker_wrapper options, e.g. `use_gpu = true`, `image_name` (without `:tag`, see the comment in gpucheck's job.toml) |
@@ -205,6 +278,13 @@ or `ASSIMILATOR` and running `install` again replaces the daemon entries in `con
 The docker_wrapper (from the server image) is part of every app version. After a server
 image update with a new wrapper, raise `APP_VERSION` and run `install` again; `install`
 warns if an existing app version contains a different wrapper.
+
+Image names: use `image_name = "<prefix>-<app>-@APP_VERSION@"` in `job.toml` (as gpucheck
+and the boinc-apps do). After building the image of a new app version on a host, the
+wrapper removes the images of older versions of the same app (`<prefix>-<app>-<version>`),
+other tags of the base image named in the Dockerfile's `FROM` line and dangling images
+(patch `0004` in `image/boinc-patches/`). Images still used by a running task are kept
+until the next new version. The client itself only cleans up its own `boinc__…` images.
 
 App images that need more than `boinc-app-base` (binaries, libraries) are built in CI and
 pulled by the clients; the app's `files/Dockerfile` then only contains `FROM` that image plus
