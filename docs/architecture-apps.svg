@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="960" viewBox="0 0 1680 960" font-family="Helvetica, Arial, sans-serif" font-size="13">
+<defs>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker>
+<marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+<marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ea580c"/></marker>
+<style>.t{fill:#0f172a}.s{fill:#475569;font-size:11.5px}.hs{font-weight:700;font-size:12.5px;fill:#334155}
+.ln{stroke:#334155;stroke-width:1.6;fill:none}.dl{stroke:#64748b;stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+.ol{stroke:#ea580c;stroke-width:2.2;fill:none;stroke-dasharray:7 4}
+.lb{font-size:11.5px;fill:#1e293b}</style></defs>
+<rect width="1680" height="960" fill="#fff"/>
+<text x="20" y="30" style="font-size:18px;font-weight:700;fill:#0f172a">boinc-stack: Docker apps from the repository to the volunteer's host</text>
+<rect x="20" y="60" width="380" height="640" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="210" y="84" text-anchor="middle" class="hs">GitHub</text>
+<rect x="40" y="105" width="340" height="105" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="210.0" y="137.5" text-anchor="middle" class="hs">MBlenn/boinc-apps</text>
+<text x="210.0" y="153.5" text-anchor="middle" class="s">apps/gnina, apps/gnina_cpu: app.env, Dockerfile,</text>
+<text x="210.0" y="169.5" text-anchor="middle" class="s">main.sh, job.toml, templates, validator, test data</text>
+<text x="210.0" y="185.5" text-anchor="middle" class="s">app-images/: build recipe of the app image</text>
+<rect x="40" y="235" width="340" height="90" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="210.0" y="268.0" text-anchor="middle" class="hs">MBlenn/boinc-stack</text>
+<text x="210.0" y="284.0" text-anchor="middle" class="s">server image with boinc-app and docker_wrapper,</text>
+<text x="210.0" y="300.0" text-anchor="middle" class="s">example app gpucheck, base image app-base/</text>
+<rect x="40" y="350" width="340" height="60" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="210.0" y="376.0" text-anchor="middle" class="hs">GitHub Actions</text>
+<text x="210.0" y="392.0" text-anchor="middle" class="s">build and push images (on push, weekly)</text>
+<path d="M55,453 v164 a155.0,8 0 0 0 310,0 v-164" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<ellipse cx="210.0" cy="453" rx="155.0" ry="8" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="210.0" y="511.0" text-anchor="middle" class="hs">GHCR  (GitHub Container Registry)</text>
+<text x="210.0" y="527.0" text-anchor="middle" class="s">boinc-server:1.6.2 – server image</text>
+<text x="210.0" y="543.0" text-anchor="middle" class="s">boinc-app-base:trixie – base for simple apps</text>
+<text x="210.0" y="559.0" text-anchor="middle" class="s">boinc-app-gnina:1.3.3-2 – gnina app image</text>
+<text x="210.0" y="575.0" text-anchor="middle" class="s">public: pulled without login</text>
+<path d="M210,325 V350" class="ln" marker-end="url(#ar)"/>
+<path d="M40,157 H30 V380 H40" class="ln" marker-end="url(#ar)"/>
+<path d="M210,410 V445" class="ln" marker-end="url(#ar)"/>
+<rect x="225.4" y="419" width="33.2" height="17" rx="3" fill="#fff" opacity="0.93"/>
+<text x="242" y="431" text-anchor="middle" class="lb">push</text>
+<rect x="430" y="60" width="560" height="780" rx="12" fill="#fffdf5" stroke="#a3a3a3" stroke-width="1.5"/>
+<text x="710" y="84" text-anchor="middle" class="hs">BOINC server  (project &lt;project&gt;)</text>
+<rect x="450" y="105" width="520" height="125" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="710.0" y="139.5" text-anchor="middle" class="hs">&lt;project&gt;-daemons</text>
+<text x="710.0" y="155.5" text-anchor="middle" class="s">boinc-app install &lt;app&gt; --from … – (project admin)</text>
+<text x="710.0" y="171.5" text-anchor="middle" class="s">boinc-app submit &lt;app&gt; N – creates jobs</text>
+<text x="710.0" y="187.5" text-anchor="middle" class="s">validator: checks results (gnina: poses, scores, RMSD)</text>
+<text x="710.0" y="203.5" text-anchor="middle" class="s">assimilator: copies valid results to results/</text>
+<rect x="450" y="255" width="520" height="90" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+<text x="710.0" y="288.0" text-anchor="middle" class="hs">&lt;project&gt;-web</text>
+<text x="710.0" y="304.0" text-anchor="middle" class="s">scheduler: picks jobs per host (plan class, opt-in, limits)</text>
+<text x="710.0" y="320.0" text-anchor="middle" class="s">upload handler: receives the result files</text>
+<rect x="450" y="370" width="520" height="175" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="464" y="413.5" text-anchor="start" class="hs">project directory</text>
+<text x="464" y="429.5" text-anchor="start" class="s">boinc_apps/&lt;app&gt;/ – copy of the app definition</text>
+<text x="464" y="445.5" text-anchor="start" class="s">apps/&lt;app&gt;/&lt;version&gt;/ – app version: docker_wrapper,</text>
+<text x="464" y="461.5" text-anchor="start" class="s">Dockerfile, main.sh, job.toml (sent to the clients)</text>
+<text x="464" y="477.5" text-anchor="start" class="s">download/ – job input files (shared test data)</text>
+<text x="464" y="493.5" text-anchor="start" class="s">upload/ → results/ – result files (docked.sdf, gzip)</text>
+<text x="464" y="509.5" text-anchor="start" class="s">config_aux.xml – tasks per host and app</text>
+<rect x="450" y="570" width="520" height="60" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="710.0" y="596.0" text-anchor="middle" class="hs">podman-auto-update.timer</text>
+<text x="710.0" y="612.0" text-anchor="middle" class="s">pulls a rebuilt server image from GHCR</text>
+<rect x="450" y="655" width="520" height="110" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="710.0" y="690.0" text-anchor="middle" class="hs">Who gets which app</text>
+<text x="710.0" y="706.0" text-anchor="middle" class="s">gpucheck: everybody (setup check, one task per host at a time)</text>
+<text x="710.0" y="722.0" text-anchor="middle" class="s">gnina, gnina_cpu: test apps, only with "Run test applications"</text>
+<text x="710.0" y="738.0" text-anchor="middle" class="s">"Use NVIDIA GPU" / "Allow CPU-only tasks": GPU or CPU app</text>
+<text x="710" y="800" text-anchor="middle" class="s">web and daemons share the project directory (bind mount)</text>
+<text x="710" y="816" text-anchor="middle" class="s">and the job queue (database, feeder shared memory)</text>
+<path d="M380,130 H450" class="dl" marker-end="url(#ad)"/>
+<rect x="388.95" y="110" width="52.1" height="17" rx="3" fill="#fff" opacity="0.93"/>
+<text x="415" y="122" text-anchor="middle" class="lb">tarball</text>
+<path d="M365,600 H450" class="dl" marker-end="url(#ad)"/>
+<rect x="366.2" y="605" width="83.6" height="17" rx="3" fill="#fff" opacity="0.93"/>
+<text x="408" y="617" text-anchor="middle" class="lb">server image</text>
+<rect x="1015" y="250" width="150" height="150" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+<text x="1090.0" y="297.0" text-anchor="middle" class="hs">Edge</text>
+<text x="1090.0" y="313.0" text-anchor="middle" class="s">VPS: Caddy or</text>
+<text x="1090.0" y="329.0" text-anchor="middle" class="s">Apache (TLS)</text>
+<text x="1090.0" y="345.0" text-anchor="middle" class="s">+ Tailscale tunnel</text>
+<text x="1090.0" y="361.0" text-anchor="middle" class="s">to the home server</text>
+<text x="1090" y="420" text-anchor="middle" class="s">details: architecture-</text>
+<text x="1090" y="434" text-anchor="middle" class="s">tunnel.svg</text>
+<path d="M970,300 H1015" class="ln" marker-end="url(#ar)" marker-start="url(#ar)"/>
+<text x="1090" y="480" text-anchor="middle" class="s">tasks, app version files,</text>
+<text x="1090" y="495" text-anchor="middle" class="s">job input (~410 KB per job;</text>
+<text x="1090" y="510" text-anchor="middle" class="s">test data is sticky: once</text>
+<text x="1090" y="525" text-anchor="middle" class="s">per host), result upload</text>
+<text x="1090" y="540" text-anchor="middle" class="s">(gzip, a few KB)</text>
+<rect x="1190" y="60" width="470" height="780" rx="12" fill="#fffdf5" stroke="#a3a3a3" stroke-width="1.5"/>
+<text x="1425" y="84" text-anchor="middle" class="hs">Volunteer's host  (Linux, NVIDIA GPU)</text>
+<rect x="1210" y="105" width="430" height="75" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="1425.0" y="138.5" text-anchor="middle" class="hs">BOINC client  (system service, user boinc)</text>
+<text x="1425.0" y="154.5" text-anchor="middle" class="s">gets tasks, runs docker_wrapper per task, reports</text>
+<rect x="1210" y="205" width="430" height="95" rx="6" fill="#ffedd5" stroke="#ea580c" stroke-width="1.5"/>
+<text x="1425.0" y="232.5" text-anchor="middle" class="hs">docker_wrapper  (part of the app version)</text>
+<text x="1425.0" y="248.5" text-anchor="middle" class="s">first task of a new version: builds the app image,</text>
+<text x="1425.0" y="264.5" text-anchor="middle" class="s">then removes images of older versions</text>
+<text x="1425.0" y="280.5" text-anchor="middle" class="s">starts the container, reports the CPU time</text>
+<rect x="1210" y="325" width="430" height="60" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="1425.0" y="351.0" text-anchor="middle" class="hs">Podman  (rootless, user boinc)</text>
+<text x="1425.0" y="367.0" text-anchor="middle" class="s">or Docker; keeps the images in the storage below</text>
+<rect x="1210" y="410" width="430" height="95" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="1425.0" y="445.5" text-anchor="middle" class="hs">container</text>
+<text x="1425.0" y="461.5" text-anchor="middle" class="s">/app = task directory: input files and outputs</text>
+<text x="1425.0" y="477.5" text-anchor="middle" class="s">main.sh → gnina → docked.sdf (gzip), gnina.log</text>
+<rect x="1210" y="530" width="430" height="60" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="1425.0" y="556.0" text-anchor="middle" class="hs">NVIDIA GPU  (Pascal or newer, driver 570+)</text>
+<text x="1425.0" y="572.0" text-anchor="middle" class="s">passed into the container: NVIDIA Container Toolkit</text>
+<rect x="1210" y="620" width="430" height="190" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="1224" y="671.0" text-anchor="start" class="hs">image storage of the user boinc</text>
+<text x="1224" y="687.0" text-anchor="start" class="s">boinc-app-gnina:1.3.3-2 – base image, ~4.5 GB</text>
+<text x="1224" y="703.0" text-anchor="start" class="s">boinc-stack-gnina-1.5 – GPU app, built FROM it: a few KB</text>
+<text x="1224" y="719.0" text-anchor="start" class="s">boinc-stack-gnina_cpu-1.5 – CPU app, same base: a few KB</text>
+<text x="1224" y="735.0" text-anchor="start" class="s">boinc-stack-gpucheck-1.6 – built FROM boinc-app-base</text>
+<text x="1224" y="751.0" text-anchor="start" class="s">layers are stored once: only a new base revision</text>
+<text x="1224" y="767.0" text-anchor="start" class="s">costs space; old versions are removed by the wrapper</text>
+<path d="M1425,180 V205" class="ln" marker-end="url(#ar)"/>
+<path d="M1425,300 V325" class="ln" marker-end="url(#ar)"/>
+<path d="M1425,385 V410" class="ln" marker-end="url(#ar)"/>
+<path d="M1425,505 V530" class="ln" marker-end="url(#ar)" marker-start="url(#ar)"/>
+<path d="M1640,355 H1652 V715 H1640" class="dl" marker-end="url(#ad)"/>
+<path d="M1165,300 C1190,300 1185,142 1210,142" class="ln" marker-end="url(#ar)" marker-start="url(#ar)"/>
+<path d="M210,625 V895 H1425 V810" class="ol" marker-end="url(#ao)"/>
+<rect x="428.55" y="878" width="782.9" height="17" rx="3" fill="#fff" opacity="0.93"/>
+<text x="820" y="890" text-anchor="middle" class="lb">image pull directly from GHCR: once per host and base image revision (several GB), not via the project server or its uplink</text>
+<text x="20" y="940" class="s">Solid: traffic / data  ·  dashed: admin actions and image pulls  ·  GHCR = GitHub Container Registry (ghcr.io), GitHub's storage for container images  ·  versions are examples</text>
+</svg>

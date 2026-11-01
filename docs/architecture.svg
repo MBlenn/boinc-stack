@@ -55,14 +55,15 @@
 <rect x="816.4" y="162" width="27.200000000000003" height="17" rx="3" fill="#ffffff" opacity="0.92"/>
 <text x="830" y="174" text-anchor="middle" class="lb">SQL</text>
 <path d="M930,250 H970" class="ln" marker-end="url(#ar)"/>
-<rect x="530" y="375" width="600" height="95" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
-<text x="830.0" y="402.5" text-anchor="middle" class="hs">/srv/boinc/rkfold/  (bind mounts, owned by boinc-rkfold)</text>
-<text x="830.0" y="418.5" text-anchor="middle" class="s">boinc/rkfold/  project dir: config.xml, apps/, download/, upload/, keys/, html/</text>
-<text x="830.0" y="434.5" text-anchor="middle" class="s">db/  MariaDB data   ·   backup/  daily dumps   ·   boinc/_backup/  pre-upgrade dumps</text>
-<text x="830.0" y="450.5" text-anchor="middle" class="s">boinc.env  credentials (600)</text>
-<path d="M635,282 V375" class="ln" stroke-dasharray="2 3"/>
-<path d="M845,282 V375" class="ln" stroke-dasharray="2 3"/>
-<path d="M1042,282 V375" class="ln" stroke-dasharray="2 3"/>
+<rect x="530" y="370" width="600" height="112" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="830.0" y="398.0" text-anchor="middle" class="hs">/srv/boinc/rkfold/  (bind mounts, owned by boinc-rkfold)</text>
+<text x="830.0" y="414.0" text-anchor="middle" class="s">boinc/rkfold/  project dir: config.xml, apps/, boinc_apps/, download/, upload/, html/</text>
+<text x="830.0" y="430.0" text-anchor="middle" class="s">log_rkfold-web/, log_rkfold-daemons/  logs (fixed container host names)</text>
+<text x="830.0" y="446.0" text-anchor="middle" class="s">db/  MariaDB data   ·   backup/  daily dumps   ·   boinc/_backup/  pre-upgrade dumps</text>
+<text x="830.0" y="462.0" text-anchor="middle" class="s">boinc.env  credentials (600)</text>
+<path d="M635,282 V370" class="ln" stroke-dasharray="2 3"/>
+<path d="M845,282 V370" class="ln" stroke-dasharray="2 3"/>
+<path d="M1042,282 V370" class="ln" stroke-dasharray="2 3"/>
 <rect x="878.6" y="348" width="52.800000000000004" height="17" rx="3" fill="#ffffff" opacity="0.92"/>
 <text x="905" y="360" text-anchor="middle" class="lb">volumes</text>
 <rect x="1150" y="130" width="170" height="70" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
@@ -105,14 +106,15 @@
 <rect x="816.4" y="577" width="27.200000000000003" height="17" rx="3" fill="#ffffff" opacity="0.92"/>
 <text x="830" y="589" text-anchor="middle" class="lb">SQL</text>
 <path d="M930,665 H970" class="ln" marker-end="url(#ar)"/>
-<rect x="530" y="790" width="600" height="95" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
-<text x="830.0" y="817.5" text-anchor="middle" class="hs">/srv/boinc/rkdemo/  (bind mounts, owned by boinc-rkdemo)</text>
-<text x="830.0" y="833.5" text-anchor="middle" class="s">boinc/rkdemo/  project dir: config.xml, apps/, download/, upload/, keys/, html/</text>
-<text x="830.0" y="849.5" text-anchor="middle" class="s">db/  MariaDB data   ·   backup/  daily dumps   ·   boinc/_backup/  pre-upgrade dumps</text>
-<text x="830.0" y="865.5" text-anchor="middle" class="s">boinc.env  credentials (600)</text>
-<path d="M635,697 V790" class="ln" stroke-dasharray="2 3"/>
-<path d="M845,697 V790" class="ln" stroke-dasharray="2 3"/>
-<path d="M1042,697 V790" class="ln" stroke-dasharray="2 3"/>
+<rect x="530" y="785" width="600" height="112" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="830.0" y="813.0" text-anchor="middle" class="hs">/srv/boinc/rkdemo/  (bind mounts, owned by boinc-rkdemo)</text>
+<text x="830.0" y="829.0" text-anchor="middle" class="s">boinc/rkdemo/  project dir: config.xml, apps/, boinc_apps/, download/, upload/, html/</text>
+<text x="830.0" y="845.0" text-anchor="middle" class="s">log_rkdemo-web/, log_rkdemo-daemons/  logs (fixed container host names)</text>
+<text x="830.0" y="861.0" text-anchor="middle" class="s">db/  MariaDB data   ·   backup/  daily dumps   ·   boinc/_backup/  pre-upgrade dumps</text>
+<text x="830.0" y="877.0" text-anchor="middle" class="s">boinc.env  credentials (600)</text>
+<path d="M635,697 V785" class="ln" stroke-dasharray="2 3"/>
+<path d="M845,697 V785" class="ln" stroke-dasharray="2 3"/>
+<path d="M1042,697 V785" class="ln" stroke-dasharray="2 3"/>
 <rect x="878.6" y="763" width="52.800000000000004" height="17" rx="3" fill="#ffffff" opacity="0.92"/>
 <text x="905" y="775" text-anchor="middle" class="lb">volumes</text>
 <rect x="1150" y="545" width="170" height="70" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
@@ -161,5 +163,11 @@
 <path d="M1420,600 C1370,600 1370,580 1320,580" class="dl" marker-end="url(#ad)"/>
 <rect x="1378.2" y="398" width="33.6" height="17" rx="3" fill="#ffffff" opacity="0.92"/>
 <text x="1395" y="410" text-anchor="middle" class="lb">pull</text>
-<text x="20" y="968" class="s">Solid arrows: traffic / data  ·  dashed: shared namespaces / image pulls  ·  each project is isolated in its own Linux user, network and data directory</text>
+<rect x="1385" y="680" width="230" height="150" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+<text x="1500.0" y="727.0" text-anchor="middle" class="hs">Docker apps</text>
+<text x="1500.0" y="743.0" text-anchor="middle" class="s">app images on GHCR are</text>
+<text x="1500.0" y="759.0" text-anchor="middle" class="s">pulled by the volunteers' hosts,</text>
+<text x="1500.0" y="775.0" text-anchor="middle" class="s">not by this host:</text>
+<text x="1500.0" y="791.0" text-anchor="middle" class="s">see architecture-apps.svg</text>
+<text x="20" y="968" class="s">Solid arrows: traffic / data  ·  dashed: shared namespaces / image pulls  ·  each project is isolated in its own Linux user, network and data directory  ·  GHCR = GitHub Container Registry (ghcr.io)</text>
 </svg>

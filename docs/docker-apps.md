@@ -19,6 +19,8 @@ Science apps are kept in a separate repository,
 their app images. `boinc-app install <app> --from <source>` installs an app from there (or
 from any repository or directory with the same layout, see [App format](#app-format)).
 
+![Docker apps: from the repository to the volunteer's host](architecture-apps.svg)
+
 Currently supported: **Linux hosts with an NVIDIA GPU**. Windows (WSL) and AMD GPUs are not
 covered yet.
 

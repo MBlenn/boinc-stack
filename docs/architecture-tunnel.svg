@@ -29,11 +29,11 @@
 <rect x="270" y="60" width="370" height="560" rx="12" fill="#fffdf5" stroke="#a3a3a3" stroke-width="1.5"/>
 <text x="455" y="84" text-anchor="middle" class="hs">VPS  (fixed public IP)</text>
 <rect x="295" y="110" width="320" height="190" rx="6" fill="#ffedd5" stroke="#ea580c" stroke-width="1.5"/>
-<text x="455.0" y="161.0" text-anchor="middle" class="hs">Caddy  (public edge, root)</text>
+<text x="455.0" y="161.0" text-anchor="middle" class="hs">Caddy or Apache  (public edge, root)</text>
 <text x="455.0" y="177.0" text-anchor="middle" class="s">only public ports :80 / :443</text>
 <text x="455.0" y="193.0" text-anchor="middle" class="s">TLS: Let's Encrypt for both domains</text>
 <text x="455.0" y="209.0" text-anchor="middle" class="s">rkfold.rechenkraft.net, kifold.kerbodyne.com</text>
-<text x="455.0" y="225.0" text-anchor="middle" class="s">→ reverse_proxy 100.64.0.2:80</text>
+<text x="455.0" y="225.0" text-anchor="middle" class="s">→ reverse proxy to 100.64.0.2:80</text>
 <text x="455.0" y="241.0" text-anchor="middle" class="s">(Host header passed through)</text>
 <text x="455.0" y="257.0" text-anchor="middle" class="s">later: rate limits, download cache</text>
 <rect x="295" y="330" width="320" height="80" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
@@ -67,7 +67,7 @@
 <text x="995.0" y="337.0" text-anchor="middle" class="s">100.64.0.2</text>
 <rect x="1190" y="110" width="440" height="70" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
 <text x="1410.0" y="141.0" text-anchor="middle" class="hs">Registries</text>
-<text x="1410.0" y="157.0" text-anchor="middle" class="s">ghcr.io/mblenn/boinc-server · docker.io/library/mariadb</text>
+<text x="1410.0" y="157.0" text-anchor="middle" class="s">GHCR: ghcr.io/mblenn/boinc-server · Docker Hub: mariadb</text>
 <text x="1410" y="200" text-anchor="middle" class="s">pulled by each project user (podman-auto-update.timer)</text>
 <rect x="850" y="390" width="780" height="250" rx="10" fill="#fefce8" stroke="#ca8a04" stroke-width="1.5"/>
 <text x="870" y="412" text-anchor="start" class="hs">Linux user boinc-rkfold  ·  rootless Podman  ·  network "rkfold"</text>
@@ -88,13 +88,14 @@
 <path d="M1235,490 H1262" class="ln" marker-end="url(#ar)"/>
 <rect x="870" y="560" width="550" height="60" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
 <text x="1145.0" y="586.0" text-anchor="middle" class="hs">/srv/boinc/rkfold/</text>
-<text x="1145.0" y="602.0" text-anchor="middle" class="s">project dir · db · backups (owned by boinc-rkfold)</text>
+<text x="1145.0" y="602.0" text-anchor="middle" class="s">project dir · db · backups · logs in log_rkfold-web/, log_rkfold-daemons/</text>
 <rect x="1440" y="450" width="170" height="170" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
-<text x="1525.0" y="507.0" text-anchor="middle" class="hs">Docker apps</text>
-<text x="1525.0" y="523.0" text-anchor="middle" class="s">e.g. gpucheck</text>
-<text x="1525.0" y="539.0" text-anchor="middle" class="s">plan class</text>
-<text x="1525.0" y="555.0" text-anchor="middle" class="s">docker_nvidia</text>
-<text x="1525.0" y="571.0" text-anchor="middle" class="s">→ volunteers' Podman</text>
+<text x="1525.0" y="499.0" text-anchor="middle" class="hs">Docker apps</text>
+<text x="1525.0" y="515.0" text-anchor="middle" class="s">e.g. gpucheck, gnina</text>
+<text x="1525.0" y="531.0" text-anchor="middle" class="s">images: volunteers</text>
+<text x="1525.0" y="547.0" text-anchor="middle" class="s">pull them from GHCR</text>
+<text x="1525.0" y="563.0" text-anchor="middle" class="s">see architecture-</text>
+<text x="1525.0" y="579.0" text-anchor="middle" class="s">apps.svg</text>
 <path d="M830,240 H822 V492 H870" class="ln" marker-end="url(#ar)"/>
 <rect x="835" y="371" width="373.4" height="17" rx="3" fill="#fff" opacity="0.93"/>
 <text x="839" y="383" text-anchor="start" class="lb">Host rkfold.rechenkraft.net + /rkfold/  →  127.0.0.1:18081</text>
@@ -117,13 +118,14 @@
 <path d="M1235,760 H1262" class="ln" marker-end="url(#ar)"/>
 <rect x="870" y="830" width="550" height="60" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
 <text x="1145.0" y="856.0" text-anchor="middle" class="hs">/srv/boinc/kifold/</text>
-<text x="1145.0" y="872.0" text-anchor="middle" class="s">project dir · db · backups (owned by boinc-kifold)</text>
+<text x="1145.0" y="872.0" text-anchor="middle" class="s">project dir · db · backups · logs in log_kifold-web/, log_kifold-daemons/</text>
 <rect x="1440" y="720" width="170" height="170" rx="6" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
-<text x="1525.0" y="777.0" text-anchor="middle" class="hs">Docker apps</text>
-<text x="1525.0" y="793.0" text-anchor="middle" class="s">e.g. gpucheck</text>
-<text x="1525.0" y="809.0" text-anchor="middle" class="s">plan class</text>
-<text x="1525.0" y="825.0" text-anchor="middle" class="s">docker_nvidia</text>
-<text x="1525.0" y="841.0" text-anchor="middle" class="s">→ volunteers' Podman</text>
+<text x="1525.0" y="769.0" text-anchor="middle" class="hs">Docker apps</text>
+<text x="1525.0" y="785.0" text-anchor="middle" class="s">e.g. gpucheck, gnina</text>
+<text x="1525.0" y="801.0" text-anchor="middle" class="s">images: volunteers</text>
+<text x="1525.0" y="817.0" text-anchor="middle" class="s">pull them from GHCR</text>
+<text x="1525.0" y="833.0" text-anchor="middle" class="s">see architecture-</text>
+<text x="1525.0" y="849.0" text-anchor="middle" class="s">apps.svg</text>
 <path d="M830,240 H822 V762 H870" class="ln" marker-end="url(#ar)"/>
 <rect x="835" y="641" width="360.8" height="17" rx="3" fill="#fff" opacity="0.93"/>
 <text x="839" y="653" text-anchor="start" class="lb">Host kifold.kerbodyne.com + /kifold/  →  127.0.0.1:18082</text>
@@ -140,5 +142,5 @@
 <path d="M210,811 H250 V700 H720 V460" class="dl" marker-end="url(#ad)"/>
 <rect x="239.75" y="682" width="480.5" height="17" rx="3" fill="#fff" opacity="0.93"/>
 <text x="480" y="694" text-anchor="middle" class="lb">SSH via Tailscale (tech admin: host, project admins: boinc-&lt;project&gt;)</text>
-<text x="20" y="975" class="s">Solid: traffic · dashed: shared namespaces / admin access · every project is isolated in its own Linux user, network and data directory. Tailscale IPs are examples.</text>
+<text x="20" y="975" class="s">Solid: traffic · dashed: shared namespaces / admin access · every project is isolated in its own Linux user, network and data directory. Tailscale IPs are examples. · GHCR = GitHub Container Registry (ghcr.io)</text>
 </svg>

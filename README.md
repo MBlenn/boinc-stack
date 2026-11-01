@@ -136,6 +136,8 @@ the container on the volunteer's host. See [docs/docker-apps.md](docs/docker-app
 operators and [docs/volunteer-setup.md](docs/volunteer-setup.md) for volunteers (Podman and
 NVIDIA setup of the BOINC client).
 
+![Docker apps: from the repository to the volunteer's host](docs/architecture-apps.svg)
+
 Science apps live in a separate repository,
 [MBlenn/boinc-apps](https://github.com/MBlenn/boinc-apps) (e.g. `gnina`, GPU docking), and are
 installed straight from there:
