@@ -14,9 +14,11 @@ AMD GPUs are not supported yet.
   often older (Ubuntu 24.04 ships 7.20): then use the BOINC repository from
   [BOINC's Linux page](https://boinc.berkeley.edu/linux_install.php). Check with
   `boinccmd --client_version`.
-- Podman 4.1 or newer (or Docker), installed in step 1. The Podman 4.9 of Ubuntu 24.04 and
-  Linux Mint 22 works for GPU apps from app versions with the current docker_wrapper on
-  (e.g. gpucheck 1.7, gnina 1.6); older versions failed with "unknown flag: --gpus"
+- Podman (or Docker), installed in step 1. GPU apps need **Podman 4.1 or newer**: the GPU
+  is passed into the container as a CDI device, which older Podman versions do not know
+  (Ubuntu 22.04 / Linux Mint 21 ship Podman 3.4: CPU apps only, or use Docker). The Podman
+  4.9 of Ubuntu 24.04 and Linux Mint 22 works from gpucheck 1.7 and gnina 1.6 on; earlier
+  app versions failed there with "unknown flag: --gpus"
 - for GPU apps: an NVIDIA GPU of the **Pascal generation or newer**, driver **570 or newer**
   (575 or newer recommended) and the NVIDIA Container Toolkit (step 3)
 - disk space: about **15 GB** that BOINC may use (BOINC Manager → Options → Computing
@@ -202,7 +204,7 @@ Example, GNINA docking on one host:
 |---|---|---|
 | `ghcr.io/mblenn/boinc-app-gnina 1.3.3-2` (base image) | 4.5 GB | 4.5 GB |
 | `localhost/boinc-stack-gnina-1.5` (GPU app 1.5, built from it) | 4.5 GB | a few KB |
-| `localhost/boinc-stack-gnina_cpu-1.5` (CPU app 1.5, same base) | 4.5 GB | a few KB |
+| `localhost/boinc-stack-gnina-cpu-1.5` (CPU app 1.5, same base) | 4.5 GB | a few KB |
 | `localhost/boinc-stack-gnina-1.4` (previous app version, same base) | 4.5 GB | a few KB |
 
 `podman images` lists 18 GB, the disk holds about 4.5 GB: each line shows the full size of
@@ -224,11 +226,17 @@ cd /tmp && sudo -u boinc podman image prune -a
 
 ## Troubleshooting
 
+The task's output (project web site → task → "Stderr output") shows the steps with
+timestamps: lines of the container wrapper with the computer's local time (e.g.
+"command finished after 612.3 s" after an image download), lines of the application
+inside the container in UTC.
+
 | Symptom | Cause / fix |
 |---|---|
 | No "Docker: version …" line in the event log | Podman/Docker does not work for `boinc`: steps 2–4 |
 | Many "cgroupv2 manager is set to systemd" warnings in task output | `containers.conf` missing or in the wrong home directory (step 2) |
 | GPU task fails after a few seconds with "unknown flag: --gpus" in the task's output | Podman older than 5 with an app version built before the fix: wait for the next app version, or run CPU apps only |
+| Task fails after many minutes with "writing blob … unexpected EOF" or another error during "Copying blob" | the download of the application image was interrupted (unstable or slow connection; "no space left on device" would mean a full disk). Download it once by hand, repeat if it breaks off: `cd /tmp && sudo -u boinc podman pull <image from the FROM line in the task's output>`; later tasks then start within seconds |
 | GPU task fails, `nvidia-smi` missing or "no GPU" in the output | NVIDIA Container Toolkit / CDI specification missing or outdated (step 3) |
 | GPU tasks stopped working after a driver update | regenerate the CDI specification (step 3) |
 | Manual `podman` commands as `boinc` from a root shell fail ("unknown FS magic", runtime directory errors) | they run without the client's environment; not relevant as long as tasks run |

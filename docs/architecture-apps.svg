@@ -109,7 +109,7 @@
 <text x="1224" y="671.0" text-anchor="start" class="hs">image storage of the user boinc</text>
 <text x="1224" y="687.0" text-anchor="start" class="s">boinc-app-gnina:1.3.3-2 – base image, ~4.5 GB</text>
 <text x="1224" y="703.0" text-anchor="start" class="s">boinc-stack-gnina-1.5 – GPU app, built FROM it: a few KB</text>
-<text x="1224" y="719.0" text-anchor="start" class="s">boinc-stack-gnina_cpu-1.5 – CPU app, same base: a few KB</text>
+<text x="1224" y="719.0" text-anchor="start" class="s">boinc-stack-gnina-cpu-1.5 – CPU app, same base: a few KB</text>
 <text x="1224" y="735.0" text-anchor="start" class="s">boinc-stack-gpucheck-1.6 – built FROM boinc-app-base</text>
 <text x="1224" y="751.0" text-anchor="start" class="s">layers are stored once: only a new base revision</text>
 <text x="1224" y="767.0" text-anchor="start" class="s">costs space; old versions are removed by the wrapper</text>

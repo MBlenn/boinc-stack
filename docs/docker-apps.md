@@ -242,6 +242,13 @@ report to `out`, which is uploaded and copied by the assimilator to
 `<project dir>/results/`. Show it with `boinc-app results gpucheck`. The task's stderr only
 contains the docker_wrapper log (and the container's stderr, if any).
 
+The wrapper log has a timestamp on every line (host's local time) and the duration of each
+docker/podman command (`command finished after N s`), so a slow image pull or build can be
+told apart from a long run (patch `0006` in `image/boinc-patches/`). Apps should log their
+own steps to stderr with timestamps as well, e.g. in `main.sh`
+`echo "$(date -u '+%Y-%m-%d %H:%M:%S UTC') docking started" >&2` (the container has no time
+zone, so mark the times as UTC).
+
 ## App format
 
 An app is a directory `apps/<app>/` (in this repository under `image/apps/`). Start from
