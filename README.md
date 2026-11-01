@@ -122,6 +122,11 @@ The project name and copyright holder shown on the website come from `PROJECT_LO
 Project files (`apps/`, `config.xml`, `html/project/`) live in `/srv/boinc/<project>/boinc/<project>/`.
 They belong to the project user and can be edited directly, e.g. via SFTP.
 
+The admin pages (`https://<host>/<project>_ops/`) are BOINC's, with a few additions from
+`image/boinc-patches/`: "Manage user" shows the project preferences per venue and the user's
+computers (venue, which preferences apply), updates show a status message, and "Users
+(by registration date)" lists all users with expandable details.
+
 ## Docker apps
 
 The image ships `docker_wrapper` and the tool `boinc-app` to deploy container-based BOINC

@@ -1,0 +1,570 @@
+BOINC ops pages: clearer user administration.
+
+- manage_user.php: project preferences per venue (Default/Home/School/Work, as
+  volunteers see them in the column view), the user's computers with their venue and
+  which preferences apply to each, a status message after updating the special user
+  status or a suspension; fixes a PHP 8 error when sending suspension emails
+- manage_special_users.php / _action.php: redirect back with a status message instead
+  of printing the SQL query; fixes broken HTML in the user rows
+- list_new_users.php: users by registration date, one line per user, click to expand
+  (account, special status, preferences per venue, computers), paging
+- new html/inc/ops_user.inc with the shared helpers
+
+diff --git a/html/inc/ops_user.inc b/html/inc/ops_user.inc
+new file mode 100644
+index 0000000..09f2243
+--- /dev/null
++++ b/html/inc/ops_user.inc
+@@ -0,0 +1,150 @@
++<?php
++// This file is part of BOINC.
++// https://boinc.berkeley.edu
++// Copyright (C) 2026 University of California
++//
++// BOINC is free software; you can redistribute it and/or modify it
++// under the terms of the GNU Lesser General Public License
++// as published by the Free Software Foundation,
++// either version 3 of the License, or (at your option) any later version.
++//
++// BOINC is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++// See the GNU Lesser General Public License for more details.
++//
++// You should have received a copy of the GNU Lesser General Public License
++// along with BOINC.  If not, see <http://www.gnu.org/licenses/>.
++
++// Helpers for admin pages that show a user's settings in a readable way:
++// project preferences per venue, the user's computers and which venue's
++// preferences apply to each of them, special user flags, status messages.
++
++require_once("../inc/util.inc");
++require_once("../inc/prefs.inc");
++require_once("../inc/prefs_project.inc");
++require_once("../inc/forum.inc");
++
++function ops_h($s) {
++    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
++}
++
++// Show a status message (e.g. after an update) as a Bootstrap alert.
++// $ok: true = success (green), false = failure (red)
++//
++function ops_alert($msg, $ok=true) {
++    // inline colors as well, in case the admin pages are shown without Bootstrap
++    $class = $ok ? "alert-success" : "alert-danger";
++    $style = $ok
++        ? "background: #dff0d8; color: #3c763d; border: 1px solid #d6e9c6;"
++        : "background: #f2dede; color: #a94442; border: 1px solid #ebccd1;";
++    echo "<div class=\"alert $class\" role=\"alert\" style=\"$style padding: 10px; margin: 10px 0;\">$msg</div>\n";
++}
++
++// Names of the special user flags that are set, e.g. "Project administrator, Project tester"
++//
++function ops_special_user_names($bits) {
++    global $special_user_bitfield;
++    $names = array();
++    for ($i=0; $i<S_NFLAGS; $i++) {
++        if (substr((string)$bits, $i, 1) == '1' && isset($special_user_bitfield[$i])) {
++            $names[] = $special_user_bitfield[$i];
++        }
++    }
++    return implode(", ", $names);
++}
++
++// The venue whose project preferences apply to a host.
++// Same rule as the scheduler (extract_venue()): the host's venue if the
++// user has separate preferences for it, otherwise the default preferences.
++//
++function ops_effective_venue($prefs, $host_venue) {
++    if ($host_venue && isset($prefs->$host_venue) && $prefs->$host_venue) {
++        return $host_venue;
++    }
++    return "";
++}
++
++function ops_venue_name($venue) {
++    return $venue ? ucfirst($venue) : "Default";
++}
++
++// Coprocessors etc. from host.serialnum, e.g.
++// "[BOINC|8.2.9][CUDA|NVIDIA GeForce RTX 4070|1|12282MB|...][docker|...]"
++// Returns array of short strings.
++//
++function ops_host_features($host) {
++    $out = array();
++    if (preg_match_all('/\[([^\]]*)\]/', (string)$host->serialnum, $m)) {
++        foreach ($m[1] as $item) {
++            $f = explode("|", $item);
++            if ($f[0] == "BOINC") {
++                $out[] = "BOINC ".ops_h($f[1] ?? "");
++            } else if (in_array($f[0], array("CUDA", "CAL", "INTEL", "apple_gpu", "opencl_gpu"))) {
++                $name = $f[1] ?? "";
++                $count = $f[2] ?? "";
++                $mem = $f[3] ?? "";
++                $out[] = ops_h(($count && $count != "1" ? "$count x " : "")."$name".($mem ? " ($mem)" : ""));
++            } else if ($f[0] != "") {
++                $out[] = ops_h(implode(" ", $f));
++            }
++        }
++    }
++    return $out;
++}
++
++// Project preferences of a user: one column per venue,
++// like the "Switch View" table that volunteers see.
++//
++function ops_show_project_prefs($user) {
++    $prefs = prefs_parse_project($user->project_prefs);
++    start_table("table-striped");
++    row_top("Setting");
++    prefs_show_project($prefs, true);
++    prefs_show_project_specific($prefs, true);
++    end_table();
++
++    $venues = array();
++    foreach (array("home", "school", "work") as $v) {
++        if (isset($prefs->$v) && $prefs->$v) $venues[] = ops_venue_name($v);
++    }
++    echo "<p class=\"text-muted\">\"--\" means the user has no separate preferences for that venue";
++    echo $venues ? " (separate preferences exist for: ".implode(", ", $venues).")" : " (only default preferences)";
++    echo ". A computer uses the preferences of its venue if they exist, otherwise the default ones.</p>\n";
++
++    if (trim((string)$user->project_prefs) != "") {
++        echo "<details><summary>Raw preferences XML</summary><pre>"
++            .ops_h($user->project_prefs)."</pre></details>\n";
++    }
++}
++
++// The user's computers: venue, which preferences apply, last contact, GPUs
++//
++function ops_show_user_hosts($user) {
++    $prefs = prefs_parse_project($user->project_prefs);
++    $hosts = BoincHost::enum("userid=$user->id", "order by rpc_time desc");
++    if (!$hosts) {
++        echo "<p>No computers.</p>\n";
++        return;
++    }
++    start_table("table-striped");
++    table_header("Computer", "Venue", "Preferences used", "Last contact", "Hardware / client");
++    foreach ($hosts as $host) {
++        $eff = ops_effective_venue($prefs, $host->venue);
++        $used = ops_venue_name($eff);
++        if ($host->venue && !$eff) {
++            $used .= " <small class=\"text-muted\">(no separate ".ops_h($host->venue)." preferences)</small>";
++        }
++        $name = $host->domain_name ? ops_h($host->domain_name) : "(hidden)";
++        table_row(
++            "<a href=\"../show_host_detail.php?hostid=$host->id\">$host->id</a> $name",
++            ops_venue_name($host->venue),
++            $used,
++            $host->rpc_time ? time_str($host->rpc_time) : "never",
++            implode("<br>", ops_host_features($host))
++        );
++    }
++    end_table();
++}
++
++?>
+diff --git a/html/ops/index.php b/html/ops/index.php
+index 7bd6956..fc75af3 100644
+--- a/html/ops/index.php
++++ b/html/ops/index.php
+@@ -91,7 +91,7 @@ echo "
+         <li><a href=\"db_form.php?table=result&amp;detail=low\">Results</a></li>
+         <li><a href=\"db_form.php?table=workunit\">Workunits</a></li>
+         <li><a href=\"db_form.php?table=host&amp;detail=low\">Hosts</a></li>
+-        <li><a href=\"db_form.php?table=user\">Users</a> (<a href=\"list_new_users.php\">recently registered</a>)</li>
++        <li><a href=\"db_form.php?table=user\">Users</a> (<a href=\"list_new_users.php\">by registration date</a>)</li>
+         <li><a href=\"db_form.php?table=team\">Teams</a></li>
+         <li><a href=\"db_action.php?table=app\">Applications</a></li>
+         <li><a href=\"db_form.php?table=app_version\">Application versions</a></li>
+diff --git a/html/ops/list_new_users.php b/html/ops/list_new_users.php
+index aedf6bf..57cc85c 100644
+--- a/html/ops/list_new_users.php
++++ b/html/ops/list_new_users.php
+@@ -16,104 +16,117 @@
+ // You should have received a copy of the GNU Lesser General Public License
+ // along with BOINC.  If not, see <http://www.gnu.org/licenses/>.
+ 
++// Users by registration date, newest first.
++// One line per user; click a line to see details
++// (account, special status, project preferences per venue, computers).
++
+ require_once("../inc/util_ops.inc");
+ require_once("../inc/forum.inc");
+ require_once("../inc/profile.inc");
++require_once("../inc/ops_user.inc");
+ 
+ db_init();
+ 
+-/***********************************************************************\
+- * Action: Process form info & controls
+-\***********************************************************************/
+-
+ $limit = get_int('limit', true);
+-if (! $limit > 0 ) $limit = 30;
+-
++if (!($limit > 0)) $limit = 50;
++if ($limit > 1000) $limit = 1000;
++$offset = get_int('offset', true);
++if (!($offset > 0)) $offset = 0;
+ 
++admin_page_head("Users by registration date");
+ 
+-/***********************************************************************\
+- * Display the page:
+-\***********************************************************************/
++echo "<style>
++    details.user-row { border-bottom: 1px solid #ddd; padding: 4px 0; }
++    details.user-row > summary { cursor: pointer; }
++    details.user-row > div { padding: 8px 0 12px 24px; }
++    .user-col { display: inline-block; vertical-align: top; }
++</style>\n";
+ 
+-admin_page_head("New Users");
+-
+-echo "<h2>Recently joined:</h2>\n";
+-
+-echo "These are the most recent ".$limit." users to join the project.<br>\n";
+-echo "Clicking on a name opens a user management page <i>in another window or tab</i>\n";
++$total = BoincUser::count("1");
++echo "<p>$total users. Newest first; click a line for details.</p>\n";
+ 
+ echo "<form name=\"new_user_limit\" action=\"?\" method=\"GET\">\n";
+-echo "<label for=\"limit\">Limit displayed users to</label>\n";
++echo "<label for=\"limit\">Users per page</label>\n";
+ echo "<input type=\"text\" value=\"".$limit."\" name=\"limit\" id=\"limit\" size=\"5\">";
+ echo "<input class=\"btn btn-default\" type=\"submit\" value=\"Display\">\n";
+ echo "</form>\n";
+ 
+-$query="SELECT * FROM user ORDER BY create_time DESC LIMIT $limit";
+-$result = _mysql_query($query);
+-if (_mysql_num_rows($result) < 1) {
+-    echo "There are no new users.";
++$users = BoincUser::enum("", "order by create_time desc, id desc limit $offset, $limit");
++if (!$users) {
++    echo "<p>No users.</p>\n";
+     admin_page_tail();
++    exit;
+ }
+ 
+-start_table();
+-table_header("ID", "Name", "Email", "Team", "Country", "Joined");
+-
+-while ($row = _mysql_fetch_object($result)) {
+-    $id = $row->id;
+-    $name = $row->name;
+-    $email = $row->email_addr;
+-    $country = $row->country;
+-    $joined = time_str($row->create_time);
+-    $email_validated = $row->email_validated;
+-
+-    $team_name="";
+-    if($row->teamid > 0){
+-        $team = BoincTeam::lookup_id($row->teamid);
+-        $team_name = $team->name;
+-    }
+-
+-    // Special Users:
+-    $roles = "";
+-    $user = $row;
++// header line
++echo "<div style=\"font-weight: bold; padding: 4px 0 4px 18px; border-bottom: 2px solid #ddd\">
++    <span class=\"user-col\" style=\"width: 13em\">Joined</span>
++    <span class=\"user-col\" style=\"width: 18em\">User</span>
++    <span class=\"user-col\" style=\"width: 9em\">Country</span>
++    <span class=\"user-col\" style=\"width: 7em\">Computers</span>
++    <span class=\"user-col\" style=\"width: 13em\">Last contact</span>
++    <span class=\"user-col\">Credit</span>
++</div>\n";
++
++foreach ($users as $user) {
+     BoincForumPrefs::lookup($user);
+-    $special_bits = $user->prefs->special_user;
+-    if ($special_bits != "0") {
+-        for ($i = 0; $i < 7; $i++) {
+-            $bit = substr($special_bits, $i, 1);
+-            if ($bit == '1'){
+-                if (!empty($roles)) {
+-                    $roles .= ", ";
+-                }
+-                $roles .= $special_user_bitfield[$i];
+-            }
+-        }
+-    }
+-    if (!empty($roles)) {
+-        $roles = "<small>[$roles]</small>";
+-    }
+-
+-    // Banished?
+-    if (!empty($user->banished_until)) {
+-        $dt = $user->banished_until - time();
+-        if( $dt > 0 ) {
+-            $x = "<span style=\"color: #ff0000\">Currently banished</span>";
+-        }
+-        else {
+-            $x = "<span style=\"color: #ff9900\">Previously banished</span>";
+-        }
+-        $roles .= $x;
++    $hosts = BoincHost::enum("userid=$user->id", "order by rpc_time desc");
++    $last = $hosts ? $hosts[0]->rpc_time : 0;
++    $roles = ops_special_user_names($user->prefs->special_user);
++
++    $flags = "";
++    if ($roles) $flags .= " <small class=\"text-info\">[".ops_h($roles)."]</small>";
++    if (!$user->email_validated) $flags .= " <small class=\"text-warning\">(email not validated)</small>";
++    if (!empty($user->prefs->banished_until) && $user->prefs->banished_until > time()) {
++        $flags .= " <small class=\"text-danger\">(suspended)</small>";
+     }
+ 
+-    if ($email_validated) {
+-        $email = "<span style=\"color: #ffff00\">".$email."</span>\n";
+-    } else {
+-        $email = "<span style=\"color: #ff0000\">".$email."</span>\n";
++    echo "<details class=\"user-row\"><summary>
++        <span class=\"user-col\" style=\"width: 13em\">".time_str($user->create_time)."</span>
++        <span class=\"user-col\" style=\"width: 18em\">".ops_h($user->name)." ($user->id)$flags</span>
++        <span class=\"user-col\" style=\"width: 9em\">".ops_h($user->country)."</span>
++        <span class=\"user-col\" style=\"width: 7em\">".count($hosts)."</span>
++        <span class=\"user-col\" style=\"width: 13em\">".($last ? time_str($last) : "never")."</span>
++        <span class=\"user-col\">".format_credit($user->total_credit)."</span>
++    </summary><div>\n";
++
++    // account
++    start_table("table-striped");
++    row2("Email", ops_h($user->email_addr).($user->email_validated ? " (validated)" : " (not validated)"));
++    row2("Joined", time_str($user->create_time));
++    row2("Country", ops_h($user->country));
++    if ($user->teamid) {
++        $team = BoincTeam::lookup_id($user->teamid);
++        row2("Team", $team ? "<a href=\"../team_display.php?teamid=$team->id\">".ops_h($team->name)."</a>" : $user->teamid);
+     }
++    row2("Credit", format_credit($user->total_credit)." total, ".format_credit($user->expavg_credit)." recent average");
++    row2("Special status", $roles ? ops_h($roles) : "none");
++    row2("Links",
++        "<a href=\"manage_user.php?userid=$user->id\">Manage user</a>
++        | <a href=\"../show_user.php?userid=$user->id\">Public page</a>
++        | <a href=\"db_action.php?table=result&userid=$user->id&detail=low\">Results</a>"
++    );
++    end_table();
++
++    // preferences per venue, computers
++    ops_show_project_prefs($user);
++    if ($hosts) ops_show_user_hosts($user);
++
++    echo "</div></details>\n";
++}
+ 
+-    table_row($id, "<a href=\"manage_user.php?userid=".$id."\">".$name."</a> ".$roles, $email,
+-        $team_name, $country, $joined);
++// paging
++echo "<p>";
++if ($offset > 0) {
++    $prev = max(0, $offset - $limit);
++    echo "<a href=\"?limit=$limit&offset=$prev\">&laquo; Newer</a> ";
++}
++$shown_to = $offset + count($users);
++echo " Users ".($offset + 1)."&ndash;$shown_to of $total ";
++if ($shown_to < $total) {
++    echo " <a href=\"?limit=$limit&offset=$shown_to\">Older &raquo;</a>";
+ }
+-end_table();
++echo "</p>\n";
+ 
+ admin_page_tail();
+ 
+diff --git a/html/ops/manage_special_users.php b/html/ops/manage_special_users.php
+index 617f702..dbcec70 100644
+--- a/html/ops/manage_special_users.php
++++ b/html/ops/manage_special_users.php
+@@ -18,11 +18,26 @@
+ 
+ require_once('../inc/forum.inc');
+ require_once('../inc/util_ops.inc');
++require_once('../inc/ops_user.inc');
+ 
+ db_init();
+ 
+ admin_page_head('Manage user privileges');
+ 
++// result of the previous update (manage_special_users_action.php)
++$done = get_str("done", true);
++if ($done) {
++    $u = BoincUser::lookup_id(get_int("userid", true));
++    $who = $u ? ops_h($u->name)." (".$u->id.")" : "User";
++    if ($done == "ok") {
++        BoincForumPrefs::lookup($u);
++        $names = $u ? ops_special_user_names($u->prefs->special_user) : "";
++        ops_alert("$who updated: ".($names ? ops_h($names) : "no special status"));
++    } else {
++        ops_alert("$who could <b>not</b> be updated.", false);
++    }
++}
++
+ start_table("align=\"center\"");
+ row1("Current special users", '9');
+ 
+@@ -40,8 +55,8 @@ $result = _mysql_query(
+ for ($i=1; $i<=_mysql_num_rows($result); $i++){
+ 	$foo = _mysql_fetch_object($result);
+     echo "<form action=\"manage_special_users_action.php\" method=\"POST\">\n";
+-    echo "<input type=\"hidden\" name=\"userid\" value=\"$foo->userid\"
+-        <tr><td>$foo->name ($foo->id)</td>
++    echo "<input type=\"hidden\" name=\"userid\" value=\"$foo->userid\">
++        <tr><td><a href=\"manage_user.php?userid=$foo->id\">".ops_h($foo->name)."</a> ($foo->id)</td>
+     ";
+     for ($j=0; $j<S_NFLAGS; $j++) {
+         $bit = substr($foo->special_user, $j, 1);
+diff --git a/html/ops/manage_special_users_action.php b/html/ops/manage_special_users_action.php
+index 69bb994..84b56c9 100644
+--- a/html/ops/manage_special_users_action.php
++++ b/html/ops/manage_special_users_action.php
+@@ -18,11 +18,10 @@
+ 
+ require_once("../inc/db_ops.inc");
+ require_once("../inc/util_ops.inc");
++require_once("../inc/forum.inc");
+ 
+ db_init();
+ 
+-admin_page_head("Manage special users action");
+-
+ $bitset = '';
+ 
+ for ($i=0;$i<S_NFLAGS;$i++) {
+@@ -32,22 +31,26 @@ for ($i=0;$i<S_NFLAGS;$i++) {
+         $bitset = str_pad($bitset, $i+1, '0');
+     }
+ }
+-if ($bitset == "0000000") $bitset = '';
++if ($bitset == str_repeat('0', S_NFLAGS)) $bitset = '';
+ $userid = post_int("userid");
+ 
+-$query = "UPDATE forum_preferences SET special_user='$bitset' WHERE userid='$userid'";
+-_mysql_query($query);
+-
+-if (_mysql_affected_rows() == 1) {
+-    echo "<center><h2>Success</h2>";
+-} else {
+-    echo "<center><h2>Failure</h2>";
++$user = BoincUser::lookup_id($userid);
++if (!$user) {
++    admin_error_page("No user with ID $userid.
++        <p><a href=manage_special_users.php>Back to user privileges</a>"
++    );
+ }
+ 
+-echo "Query was: $query</center>";
++// make sure the user has a forum preferences record to update
++BoincForumPrefs::lookup($user);
+ 
+-//echo "<br><a href=\"manage_special_users.php\">Manage users</a>";
++$query = "UPDATE forum_preferences SET special_user='$bitset' WHERE userid='$userid'";
++_mysql_query($query);
+ 
+-admin_page_tail();
++// check what is stored now (an unchanged value counts as success);
++// redirect so that reloading the page doesn't repeat the update
++$prefs = BoincForumPrefs::lookup_userid($userid);
++$ok = $prefs && $prefs->special_user == $bitset;
++header("Location: manage_special_users.php?userid=$userid&done=".($ok ? "ok" : "fail"));
+ 
+ ?>
+diff --git a/html/ops/manage_user.php b/html/ops/manage_user.php
+index 9f0d18d..4527732 100644
+--- a/html/ops/manage_user.php
++++ b/html/ops/manage_user.php
+@@ -32,6 +32,7 @@ require_once("../inc/forum.inc");
+ require_once("../inc/util_ops.inc");
+ require_once("../inc/profile.inc");
+ require_once("../project/project.inc");
++require_once("../inc/ops_user.inc");
+ 
+ error_reporting(E_ALL);
+ ini_set('display_errors', true);
+@@ -78,6 +79,10 @@ function handle_special_user($user) {
+     }
+     $q = "UPDATE forum_preferences SET special_user=\"$bits\" WHERE userid=$user->id";
+     _mysql_query($q);
++
++    // check what is stored now (an unchanged value counts as success)
++    $prefs = BoincForumPrefs::lookup_userid($user->id);
++    return $prefs && $prefs->special_user == $bits;
+ }
+ 
+ 
+@@ -128,10 +133,14 @@ have been restored by ".$g_logged_in_user->name."\n";
+ 
+             send_email($user, $subject, $body);
+ 
+-            $emails = explode(",", POST_REPORT_EMAILS);
+-            foreach ($emails as $email) {
+-                $admin->email_addr = $email;
+-                send_email($admin, $subject, $body);
++            if (defined("POST_REPORT_EMAILS")) {
++                $emails = explode(",", POST_REPORT_EMAILS);
++                foreach ($emails as $email) {
++                    $admin = new StdClass;
++                    $admin->email_addr = $email;
++                    $admin->name = $email;
++                    send_email($admin, $subject, $body);
++                }
+             }
+         }
+     }
+@@ -143,6 +152,20 @@ function show_manage_user_form($user) {
+ 
+     admin_page_head("Management $user->name");
+ 
++    // result of the previous action (see the redirects at the end of this file)
++    switch (get_str("done", true)) {
++    case "special_ok":
++        $names = ops_special_user_names($user->prefs->special_user);
++        ops_alert("Special user status updated: ".($names ? ops_h($names) : "no special status"));
++        break;
++    case "special_fail":
++        ops_alert("Special user status could <b>not</b> be updated (no forum preferences record?).", false);
++        break;
++    case "suspend_ok":
++        ops_alert("Suspension updated.");
++        break;
++    }
++
+     if (!defined("POST_REPORT_EMAILS")) {
+         echo "<p><font color='RED'>
+        There is no administrative email address defined for reporting problems
+@@ -171,6 +194,11 @@ function show_manage_user_form($user) {
+ 
+     echo "</form>\n";
+ 
++    echo "<h3>Project preferences per venue</h3>\n";
++    ops_show_project_prefs($user);
++    echo "<h3>Computers</h3>\n";
++    ops_show_user_hosts($user);
++
+ 
+     // Special User status:
+ 
+@@ -295,13 +323,18 @@ if (isset($_POST['delete_user'])) {
+     exit;
+ }
+ 
++// after an update, redirect (so that reloading the page doesn't repeat it)
++// and tell the next page what happened
++//
+ if (isset($_POST['special_user'])) {
+-    handle_special_user($user);
+-    Header("Location: manage_user.php?userid=$user->id");
++    $ok = handle_special_user($user);
++    Header("Location: manage_user.php?userid=$user->id&done=".($ok ? "special_ok" : "special_fail"));
++    exit;
+ }
+ if (isset($_POST['suspend_submit'])) {
+     handle_suspend($user);
+-    Header("Location: manage_user.php?userid=$user->id");
++    Header("Location: manage_user.php?userid=$user->id&done=suspend_ok");
++    exit;
+ }
+ 
+ show_manage_user_form($user);

@@ -34,7 +34,8 @@ RUN ./_autosetup \
     && make -C api -j"$(nproc)" libboinc_api.la \
     && make -C sched -j"$(nproc)" libsched.la \
     && make -j"$(nproc)" \
-    && echo "${BOINC_REF}" > /usr/local/src/boinc/BOINC_REF
+    && echo "${BOINC_REF}+p$(cat /tmp/boinc-patches/*.patch | sha256sum | cut -c1-8)" \
+       > /usr/local/src/boinc/BOINC_REF
 
 # docker_wrapper for Docker apps (shipped to volunteers' Linux hosts). Linked statically,
 # so it runs on older distributions than the trixie build environment.
