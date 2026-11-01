@@ -1,0 +1,32 @@
+BOINC docker_wrapper: GPU access with Podman 4.x.
+
+For apps with use_gpu the wrapper always adds "--gpus all". Podman only knows that
+Docker option since version 5; Podman 4.x (e.g. 4.9.3 in Ubuntu 24.04 and Linux Mint 22)
+fails with "Error: unknown flag: --gpus", so no container is created and the task
+ends with exit code 1 after a few seconds.
+With Podman the wrapper now requests the GPUs as CDI devices ("--device
+nvidia.com/gpu=all"), which works with every Podman version with CDI support
+(4.1 and newer) and needs the CDI specification created by "nvidia-ctk cdi generate".
+Docker keeps "--gpus all".
+Written for server_release/1.6/1.6.2 on top of 0002 and 0004.
+
+diff --git a/samples/docker_wrapper/docker_wrapper.cpp b/samples/docker_wrapper/docker_wrapper.cpp
+index ca2615f..94ed248 100644
+--- a/samples/docker_wrapper/docker_wrapper.cpp
++++ b/samples/docker_wrapper/docker_wrapper.cpp
+@@ -687,7 +687,14 @@ int create_container() {
+     // GPU access
+     //
+     if (config.use_gpu) {
+-        strcat(cmd, " --gpus all");
++        if (docker_type == PODMAN) {
++            // Podman < 5 has no --gpus (e.g. 4.9.3 in Ubuntu 24.04 / Linux Mint 22).
++            // CDI device names work with all Podman versions that support CDI (4.1+);
++            // needs the CDI spec from "nvidia-ctk cdi generate"
++            strcat(cmd, " --device nvidia.com/gpu=all");
++        } else {
++            strcat(cmd, " --gpus all");
++        }
+     }
+ 
+     // web graphics

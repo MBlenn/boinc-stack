@@ -14,7 +14,9 @@ AMD GPUs are not supported yet.
   often older (Ubuntu 24.04 ships 7.20): then use the BOINC repository from
   [BOINC's Linux page](https://boinc.berkeley.edu/linux_install.php). Check with
   `boinccmd --client_version`.
-- Podman (or Docker), installed in step 1
+- Podman 4.1 or newer (or Docker), installed in step 1. The Podman 4.9 of Ubuntu 24.04 and
+  Linux Mint 22 works for GPU apps from app versions with the current docker_wrapper on
+  (e.g. gpucheck 1.7, gnina 1.6); older versions failed with "unknown flag: --gpus"
 - for GPU apps: an NVIDIA GPU of the **Pascal generation or newer**, driver **570 or newer**
   (575 or newer recommended) and the NVIDIA Container Toolkit (step 3)
 - disk space: about **15 GB** that BOINC may use (BOINC Manager → Options → Computing
@@ -134,10 +136,11 @@ Then:
 cd /tmp
 sudo -u boinc podman run --rm docker.io/library/debian:trixie-slim echo container ok
 # GPU apps:
-sudo -u boinc podman run --rm --gpus all docker.io/library/debian:trixie-slim nvidia-smi
+sudo -u boinc podman run --rm --device nvidia.com/gpu=all docker.io/library/debian:trixie-slim nvidia-smi
 ```
 
-The second command must show your GPU. (With Docker: replace `podman` by `docker`.)
+The second command must show your GPU. With Docker: replace `podman` by `docker` and
+`--device nvidia.com/gpu=all` by `--gpus all`.
 
 ## 5. Restart the BOINC client
 
@@ -225,6 +228,7 @@ cd /tmp && sudo -u boinc podman image prune -a
 |---|---|
 | No "Docker: version …" line in the event log | Podman/Docker does not work for `boinc`: steps 2–4 |
 | Many "cgroupv2 manager is set to systemd" warnings in task output | `containers.conf` missing or in the wrong home directory (step 2) |
+| GPU task fails after a few seconds with "unknown flag: --gpus" in the task's output | Podman older than 5 with an app version built before the fix: wait for the next app version, or run CPU apps only |
 | GPU task fails, `nvidia-smi` missing or "no GPU" in the output | NVIDIA Container Toolkit / CDI specification missing or outdated (step 3) |
 | GPU tasks stopped working after a driver update | regenerate the CDI specification (step 3) |
 | Manual `podman` commands as `boinc` from a root shell fail ("unknown FS magic", runtime directory errors) | they run without the client's environment; not relevant as long as tasks run |
