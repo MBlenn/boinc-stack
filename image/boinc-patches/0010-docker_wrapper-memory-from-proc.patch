@@ -1,0 +1,127 @@
+BOINC docker_wrapper: memory use of the container from /proc.
+
+The wrapper reports the container's working set to the client (wss in
+boinc_report_app_status_aux), taken from MemUsage of "stats --no-stream". With rootless
+Podman under the client service the container has no cgroup of its own (see 0002), and
+MemUsage is the memory of the enclosing cgroup: all BOINC tasks plus page cache, e.g.
+4.8 GB for a gnina task that uses far less. The client sums these values against its RAM
+limit and estimates new tasks of the app version from them, so on a 64 GB host further
+tasks went to "waiting for memory" after about 6 running tasks with RAM mostly free.
+On Linux the WSS is now the sum of the resident set sizes of the container's process
+tree (field rss of /proc/PID/stat, same tree as the CPU time); the stats value is only
+used if the tree can't be read. The log line at the end of the container also shows the
+peak memory use, to help set rsc_memory_bound.
+Written for server_release/1.6/1.6.2 on top of 0002 and 0004 to 0009.
+
+diff --git a/samples/docker_wrapper/docker_wrapper.cpp b/samples/docker_wrapper/docker_wrapper.cpp
+index 736b19b..1fd3f53 100644
+--- a/samples/docker_wrapper/docker_wrapper.cpp
++++ b/samples/docker_wrapper/docker_wrapper.cpp
+@@ -207,6 +207,8 @@ struct RSC_USAGE {
+ // PID namespace and readable by the client user.
+ //
+ double last_cpu_secs = -1;
++double peak_wss = 0;
++    // largest memory use of the container seen so far (bytes), for the log
+ 
+ 
+ 
+@@ -958,11 +960,18 @@ int get_container_pid() {
+ }
+ 
+ // sum of utime+stime+cutime+cstime (seconds) of root_pid and its descendants;
+-// -1 if root_pid doesn't exist
++// -1 if root_pid doesn't exist.
++// wss: sum of the resident set sizes (bytes) of these processes.
++// "stats" MemUsage has the same problem as CPUPerc (see above): without a
++// cgroup of its own the container reports the memory of the enclosing cgroup,
++// i.e. of all BOINC tasks plus page cache. The client uses the reported WSS
++// to decide how many tasks fit into RAM ("waiting for memory").
+ //
+-double proc_tree_cpu(int root_pid) {
++double proc_tree_cpu(int root_pid, double& wss) {
+     std::map<int, int> parent;
+     std::map<int, double> ticks;
++    std::map<int, double> rss;
++    wss = 0;
+     DIR* d = opendir("/proc");
+     if (!d) return -1;
+     struct dirent* de;
+@@ -981,13 +990,16 @@ double proc_tree_cpu(int root_pid) {
+         if (!p) continue;
+         int ppid;
+         unsigned long long ut, st;
+-        long long cut, cst;
+-        if (sscanf(p+2,
+-            "%*c %d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu %lld %lld",
+-            &ppid, &ut, &st, &cut, &cst) != 5
+-        ) continue;
++        long long cut, cst, rss_pages = 0;
++        int nf = sscanf(p+2,
++            "%*c %d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu %lld %lld"
++            " %*s %*s %*s %*s %*s %*s %lld",
++            &ppid, &ut, &st, &cut, &cst, &rss_pages
++        );
++        if (nf < 5) continue;
+         parent[pid] = ppid;
+         ticks[pid] = (double)ut + st + cut + cst;
++        rss[pid] = (nf == 6 && rss_pages > 0) ? (double)rss_pages : 0;
+     }
+     closedir(d);
+     if (!ticks.count(root_pid)) return -1;
+@@ -997,10 +1009,12 @@ double proc_tree_cpu(int root_pid) {
+         int pid = todo.back();
+         todo.pop_back();
+         total += ticks[pid];
++        wss += rss[pid];
+         for (auto& pp: parent) {
+             if (pp.second == pid) todo.push_back(pp.first);
+         }
+     }
++    wss *= sysconf(_SC_PAGESIZE);
+     return total/sysconf(_SC_CLK_TCK);
+ }
+ #endif
+@@ -1072,12 +1086,20 @@ int get_stats(RSC_USAGE &ru) {
+     if (ru.cpu_frac < 0 || ru.cpu_frac > ncpus) ru.cpu_frac = 0;
+ 
+     if (!container_pid) container_pid = get_container_pid();
++#endif
++    ru.wss = mem;
++#ifdef __linux__
+     if (container_pid) {
+-        ru.cpu_secs = proc_tree_cpu(container_pid);
+-        if (ru.cpu_secs < 0) container_pid = 0;     // gone; look up again next time
++        double tree_wss;
++        ru.cpu_secs = proc_tree_cpu(container_pid, tree_wss);
++        if (ru.cpu_secs < 0) {
++            container_pid = 0;     // gone; look up again next time
++        } else {
++            ru.wss = tree_wss;
++        }
+     }
+ #endif
+-    ru.wss = mem;
++    if (ru.wss > peak_wss) peak_wss = ru.wss;
+     return 0;
+ }
+ 
+@@ -1452,13 +1474,15 @@ int main(int argc, char** argv) {
+             //
+             switch(poll_app()) {
+             case JOB_FAIL:
+-                wlog("container failed (CPU time %.1f s)\n", cpu_time);
++                wlog("container failed (CPU time %.1f s, peak memory %.0f MB)\n",
++                    cpu_time, peak_wss/MEGA
++                );
+                 cleanup();
+                 boinc_finish(1);
+                 break;
+             case JOB_SUCCESS:
+-                wlog("container exited with code %d (CPU time %.1f s)\n",
+-                    container_exit_code, cpu_time
++                wlog("container exited with code %d (CPU time %.1f s, peak memory %.0f MB)\n",
++                    container_exit_code, cpu_time, peak_wss/MEGA
+                 );
+                 cleanup();
+                 // JOB_SUCCESS means Docker/Podman succeeded.

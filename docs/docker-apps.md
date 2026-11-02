@@ -96,6 +96,22 @@ Recommended setup: `gpucheck` without `APP_BETA` (everybody gets it first), the 
 gpucheck, sees a valid result, and opts in to the real apps afterwards. Volunteers who opt
 in get beta tasks first and the other apps when there are no beta tasks.
 
+## Memory use and rsc_memory_bound
+
+The client decides how many tasks fit into RAM from the working set size (WSS) the wrapper
+reports for each running task, and estimates tasks that have not started yet from the
+largest WSS of their app version (or, before any task ran, from `rsc_memory_bound` in the
+input template). The wrapper measures the WSS as the resident memory of the container's
+processes (`/proc`, patch `0010` in `image/boinc-patches/`) and logs the peak at the end:
+`container exited with code 0 (CPU time 61.9 s, peak memory 950 MB)`. Use that to set
+`rsc_memory_bound` per app with some margin. The client does not abort tasks that exceed
+`rsc_memory_bound` (that check is disabled in BOINC); it only aborts a task whose WSS
+exceeds its RAM limit.
+
+Before patch `0010` the WSS came from `podman stats`, which with rootless Podman under the
+client service reports the memory of all BOINC tasks together: hosts with plenty of free
+RAM put tasks into "waiting for memory" after a few running tasks.
+
 ## Hosts with several GPUs
 
 The BOINC client runs one GPU task per GPU and assigns each task a device number. All GPUs
