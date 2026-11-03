@@ -33,6 +33,10 @@ the BOINC host sits at home behind Tailscale without any open ports. See
 Containers are **disposable**. All data lives in the directories above, so images can be
 rebuilt and replaced at any time.
 
+On ZFS, `scripts/zfs-project.sh` creates one dataset per directory (database with small
+records, project files and dumps with large records, compression on) before
+`new-project.sh`, see [docs/zfs.md](docs/zfs.md).
+
 ## Getting started
 
 Requirements: Ubuntu 24.04 / Debian 12+ with Podman ≥ 4.4 (Quadlet).

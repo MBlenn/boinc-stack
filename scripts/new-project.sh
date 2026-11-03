@@ -4,6 +4,8 @@
 #   - data directory /srv/boinc/<shortname>/{db,boinc} + env files with random passwords
 #   - Quadlet units (network, db, web, daemons) in the project user's systemd user instance
 #   - Caddy configuration via caddy-sync.sh (projects sharing a site address are routed by path)
+#   - on ZFS: create the datasets first with zfs-project.sh; they are used if
+#     ${ZFS_CONF_DIR}/<shortname>.conf exists, otherwise plain directories are created
 #
 # Examples:
 #   ./new-project.sh -n rkfold -l "Rechenkraft Folding" \
@@ -17,6 +19,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TEMPLATE_DIR="${REPO_DIR}/project-template"
 DATA_ROOT="${DATA_ROOT:-/srv/boinc}"
+ZFS_CONF_DIR="${ZFS_CONF_DIR:-/etc/boinc-stack/zfs}"
 BOINC_IMAGE="${BOINC_IMAGE:-ghcr.io/mblenn/boinc-server:1.6.2}"
 MARIADB_IMAGE="${MARIADB_IMAGE:-docker.io/library/mariadb:12.3}"
 
@@ -36,7 +39,8 @@ Usage: $0 -n SHORTNAME -l LONGNAME -u URL_BASE -s SITE_ADDRESS [-p WEB_PORT] [-b
       given more than once). Caddy then accepts X-Forwarded-For/-Proto from it, so BOINC
       sees the real client IPs. Use an http:// site address, the edge terminates TLS.
   --no-start  only create the units, do not start them
-Environment: BOINC_IMAGE (${BOINC_IMAGE}), MARIADB_IMAGE (${MARIADB_IMAGE}), DATA_ROOT (${DATA_ROOT})
+Environment: BOINC_IMAGE (${BOINC_IMAGE}), MARIADB_IMAGE (${MARIADB_IMAGE}), DATA_ROOT (${DATA_ROOT}),
+             ZFS_CONF_DIR (${ZFS_CONF_DIR}, datasets from zfs-project.sh)
 EOF
     exit 1
 }
@@ -71,7 +75,30 @@ done
 
 USER_NAME="boinc-${PROJECT}"
 DATA_DIR="${DATA_ROOT}/${PROJECT}"
-[ -e "${DATA_DIR}" ] && { echo "${DATA_DIR} already exists. Aborting."; exit 1; }
+# value of KEY=value in a conf file (quotes removed)
+conf_get() { sed -n "s/^$2=//p" "$1" | head -1 | sed 's/^"\(.*\)"$/\1/'; }
+ZFS_CONF="${ZFS_CONF_DIR}/${PROJECT}.conf"
+if [ -f "${ZFS_CONF}" ]; then
+    # datasets created by zfs-project.sh: they must be mounted at DATA_DIR and still empty
+    ZDIR="$(conf_get "${ZFS_CONF}" DATA_DIR)"
+    ZFS_DATASET="$(conf_get "${ZFS_CONF}" ZFS_DATASET)"
+    ZFS_DATASETS="$(conf_get "${ZFS_CONF}" ZFS_DATASETS)"
+    [ "${ZDIR}" = "${DATA_DIR}" ] || { echo "${ZFS_CONF}: DATA_DIR=${ZDIR}, expected ${DATA_DIR} (same DATA_ROOT as for zfs-project.sh?). Aborting."; exit 1; }
+    command -v zfs >/dev/null || { echo "${ZFS_CONF} exists, but zfs is not installed. Aborting."; exit 1; }
+    for ds in ${ZFS_DATASETS}; do
+        [ "$(zfs get -H -o value mounted "${ds}" 2>/dev/null)" = "yes" ] \
+            || { echo "ZFS dataset ${ds} (from ${ZFS_CONF}) is missing or not mounted. Aborting."; exit 1; }
+    done
+    [ "$(zfs get -H -o value mountpoint "${ZFS_DATASET}")" = "${DATA_DIR}" ] \
+        || { echo "${ZFS_DATASET} is not mounted at ${DATA_DIR}. Aborting."; exit 1; }
+    [ -e "${DATA_DIR}/project.conf" ] && { echo "${DATA_DIR} already contains a project. Aborting."; exit 1; }
+    for sub in db boinc backup; do
+        [ -z "$(ls -A "${DATA_DIR}/${sub}" 2>/dev/null)" ] || { echo "${DATA_DIR}/${sub} is not empty. Aborting."; exit 1; }
+    done
+    echo "==> using the ZFS datasets from ${ZFS_CONF} (${ZFS_DATASET})"
+else
+    [ -e "${DATA_DIR}" ] && { echo "${DATA_DIR} already exists. Aborting."; exit 1; }
+fi
 
 # --- pick a free port
 if [ -z "$WEB_PORT" ]; then
@@ -111,7 +138,7 @@ EOF_RC
 fi
 
 # --- data directory + secrets
-mkdir -p "${DATA_DIR}/db" "${DATA_DIR}/boinc"
+mkdir -p "${DATA_DIR}/db" "${DATA_DIR}/boinc" "${DATA_DIR}/backup"
 DB_PASSWORD="$(openssl rand -hex 24)"
 DB_ROOT_PASSWORD="$(openssl rand -hex 24)"
 OPS_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=')"

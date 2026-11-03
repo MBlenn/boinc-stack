@@ -5,6 +5,8 @@
 #   - deletes the Linux user boinc-<project> including its home directory
 #   - deletes /srv/boinc/<project> (database, project directory, backups)
 #     or, with --keep-data, moves it to /srv/boinc/_removed/<project>-<timestamp>
+#   - on ZFS (datasets from zfs-project.sh): destroys the datasets, or with --keep-data
+#     renames them to <parent>/_removed_<project>_<timestamp> (mounted under _removed/)
 #
 # Examples:
 #   ./remove-project.sh -n test1              # asks for confirmation
@@ -13,6 +15,7 @@
 set -euo pipefail
 
 DATA_ROOT="${DATA_ROOT:-/srv/boinc}"
+ZFS_CONF_DIR="${ZFS_CONF_DIR:-/etc/boinc-stack/zfs}"
 
 usage() {
     cat <<EOF
@@ -45,9 +48,19 @@ if [ -f "${DATA_DIR}/project.conf" ]; then
     . "${DATA_DIR}/project.conf"
 fi
 
+# value of KEY=value in a conf file (quotes removed)
+conf_get() { sed -n "s/^$2=//p" "$1" | head -1 | sed 's/^"\(.*\)"$/\1/'; }
+ZFS_CONF="${ZFS_CONF_DIR}/${PROJECT}.conf"
+ZFS_DATASET=""
+if [ -f "${ZFS_CONF}" ]; then
+    ZFS_DATASET="$(conf_get "${ZFS_CONF}" ZFS_DATASET)"
+    command -v zfs >/dev/null || { echo "${ZFS_CONF} exists, but zfs is not installed. Aborting."; exit 1; }
+    zfs list -H -o name "${ZFS_DATASET}" >/dev/null 2>&1 || ZFS_DATASET=""
+fi
+
 USER_EXISTS=0
 id "${USER_NAME}" >/dev/null 2>&1 && USER_EXISTS=1
-if [ "$USER_EXISTS" -eq 0 ] && [ ! -e "${DATA_DIR}" ]; then
+if [ "$USER_EXISTS" -eq 0 ] && [ ! -e "${DATA_DIR}" ] && [ -z "${ZFS_DATASET}" ]; then
     echo "Nothing found for project '${PROJECT}' (no user ${USER_NAME}, no ${DATA_DIR})."
     exit 0
 fi
@@ -55,7 +68,13 @@ fi
 echo "This removes project '${PROJECT}':"
 [ "$USER_EXISTS" -eq 1 ] && echo "  - user ${USER_NAME} with all its containers, images and home directory"
 echo "  - its routes in the Caddy configuration"
-if [ -e "${DATA_DIR}" ]; then
+if [ -n "${ZFS_DATASET}" ]; then
+    if [ "$KEEP_DATA" -eq 1 ]; then
+        echo "  - ZFS dataset ${ZFS_DATASET} (with db, boinc, backup) is RENAMED to _removed_${PROJECT}_<timestamp>"
+    else
+        echo "  - ZFS dataset ${ZFS_DATASET} is DESTROYED with all children and snapshots (database, project files, keys, backups)"
+    fi
+elif [ -e "${DATA_DIR}" ]; then
     if [ "$KEEP_DATA" -eq 1 ]; then
         echo "  - ${DATA_DIR} is MOVED to ${DATA_ROOT}/_removed/"
     else
@@ -110,7 +129,23 @@ fi
 
 
 # --- data directory
-if [ -e "${DATA_DIR}" ]; then
+if [ -n "${ZFS_DATASET}" ]; then
+    if [ "$KEEP_DATA" -eq 1 ]; then
+        ts="$(date +%Y%m%d-%H%M%S)"
+        target_ds="${ZFS_DATASET%/*}/_removed_${PROJECT}_${ts//-/_}"
+        mkdir -p "${DATA_ROOT}/_removed"
+        zfs rename "${ZFS_DATASET}" "${target_ds}"
+        zfs set mountpoint="${DATA_ROOT}/_removed/${PROJECT}-${ts}" "${target_ds}"
+        chown -R root:root "${DATA_ROOT}/_removed/${PROJECT}-${ts}"
+        chmod 700 "${DATA_ROOT}/_removed/${PROJECT}-${ts}"
+        echo "==> datasets renamed to ${target_ds}, mounted at ${DATA_ROOT}/_removed/${PROJECT}-${ts}"
+    else
+        echo "==> destroying ZFS dataset ${ZFS_DATASET}"
+        zfs destroy -r "${ZFS_DATASET}"
+    fi
+    mv "${ZFS_CONF}" "${ZFS_CONF}.removed-$(date +%Y%m%d-%H%M%S)"
+    rmdir "${DATA_DIR}" 2>/dev/null || true
+elif [ -e "${DATA_DIR}" ]; then
     if [ "$KEEP_DATA" -eq 1 ]; then
         target="${DATA_ROOT}/_removed/${PROJECT}-$(date +%Y%m%d-%H%M%S)"
         mkdir -p "${DATA_ROOT}/_removed"
