@@ -14,11 +14,14 @@ AMD GPUs are not supported yet.
   often older (Ubuntu 24.04 ships 7.20): then use the BOINC repository from
   [BOINC's Linux page](https://boinc.berkeley.edu/linux_install.php). Check with
   `boinccmd --client_version`.
-- Podman (or Docker), installed in step 1. GPU apps need **Podman 4.1 or newer**: the GPU
-  is passed into the container as a CDI device, which older Podman versions do not know
-  (Ubuntu 22.04 / Linux Mint 21 ship Podman 3.4: CPU apps only, or use Docker). The Podman
-  4.9 of Ubuntu 24.04 and Linux Mint 22 works from gpucheck 1.7 and gnina 1.6 on; earlier
-  app versions failed there with "unknown flag: --gpus"
+- Podman (or Docker), installed in step 1. The GPU is passed into the container as a CDI
+  device (step 3):
+
+  | Podman (`podman --version`) | GPU apps |
+  |---|---|
+  | 5.1 or newer | yes |
+  | 4.1 to 5.0 (e.g. 4.9 in Ubuntu 24.04 / Linux Mint 22) | yes, with the extra setting in step 3 ("Podman older than 5.1"), from gpucheck 1.7 and gnina 1.6 on |
+  | older (e.g. 3.4 in Ubuntu 22.04 / Linux Mint 21) | no: CPU apps only, or use Docker |
 - for GPU apps: an NVIDIA GPU of the **Pascal generation or newer**, driver **570 or newer**
   (575 or newer recommended) and the NVIDIA Container Toolkit (step 3)
 - disk space: about **15 GB** that BOINC may use (BOINC Manager → Options → Computing
@@ -122,16 +125,37 @@ echo deb \[signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg\] 
 
 Then:
 
-- Podman: create the CDI specification and check it
+- Podman: the GPU is described by a CDI specification. Recent toolkit versions install the
+  service `nvidia-cdi-refresh`, which writes it to `/var/run/cdi/nvidia.yaml` at boot and
+  after driver updates. Check whether it exists:
   ```bash
-  sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+  systemctl status nvidia-cdi-refresh.service --no-pager
+  ```
+  - With the service: `sudo systemctl restart nvidia-cdi-refresh.service`. Do not create
+    `/etc/cdi/nvidia.yaml` in addition (it would become outdated with the next driver
+    update); remove it if you created it earlier.
+  - Without the service: `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, and
+    **run it again after each driver update**.
+
+  Then check:
+  ```bash
   nvidia-ctk cdi list
   ```
-  `nvidia-ctk cdi list` must show entries like `nvidia.com/gpu=0` and `nvidia.com/gpu=all`;
-  without them GPU tasks fail with "unresolvable CDI devices". Recent toolkit versions also
-  install `nvidia-cdi-refresh`, which regenerates the specification after driver updates
-  (`systemctl status nvidia-cdi-refresh.path`). Without it, **run the `generate` command
-  again after each driver update**.
+  It must show entries like `nvidia.com/gpu=0` and `nvidia.com/gpu=all`; without them GPU
+  tasks fail with "unresolvable CDI devices".
+
+  **Podman older than 5.1** (e.g. Ubuntu 24.04, Linux Mint 22): since NVIDIA Container
+  Toolkit 1.19 the specification uses CDI format 0.7.0 with the field `additionalGids`,
+  which these Podman versions reject; GPU tasks then fail with "unresolvable CDI devices"
+  although `nvidia-ctk cdi list` shows the GPU. Tell the toolkit to write the older format:
+  ```bash
+  echo NVIDIA_CTK_CDI_GENERATE_FEATURE_FLAGS=no-additional-gids-for-device-nodes \
+    | sudo tee -a /etc/nvidia-container-toolkit/nvidia-cdi-refresh.env
+  sudo systemctl restart nvidia-cdi-refresh.service
+  grep cdiVersion /var/run/cdi/nvidia.yaml     # must not be 0.7.0
+  ```
+  Without the service, add `--feature-flag no-additional-gids-for-device-nodes` to the
+  `nvidia-ctk cdi generate` command above instead.
 - Docker: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
 
 ## 4. Test as the BOINC user
@@ -247,6 +271,7 @@ inside the container in UTC.
 | Many "cgroupv2 manager is set to systemd" warnings in task output | `containers.conf` missing or in the wrong home directory (step 2) |
 | GPU task fails after a few seconds with "unknown flag: --gpus" in the task's output | Podman older than 5 with an app version built before the fix: wait for the next app version, or run CPU apps only |
 | Task fails after many minutes with "writing blob … unexpected EOF" or another error during "Copying blob" | the download of the application image was interrupted (unstable or slow connection; "no space left on device" would mean a full disk). Download it once by hand, repeat if it breaks off: `cd /tmp && sudo -u boinc podman pull <image from the FROM line in the task's output>`; later tasks then start within seconds |
+| GPU task fails with "unresolvable CDI devices nvidia.com/gpu=all" although `nvidia-ctk cdi list` shows the GPU | Podman older than 5.1 cannot read the specification (format 0.7.0). `cd /tmp && sudo -u boinc podman --log-level=debug run --rm --device nvidia.com/gpu=all docker.io/library/debian:trixie-slim true 2>&1 \| grep -i cdi` shows `unknown field "additionalGids"`. Fix: "Podman older than 5.1" in step 3 |
 | GPU task fails with "unresolvable CDI devices nvidia.com/gpu=all" (older app versions: task hangs for hours with no CPU time, `podman ps -a` shows the container as "Created") | the CDI specification of the GPU is missing: `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, check with `nvidia-ctk cdi list` (step 3); remove hanging containers with `cd /tmp && sudo -u boinc podman rm -f <name>` |
 | Tasks in "waiting for memory" although RAM is mostly free | app versions before gpucheck 1.10 / gnina 1.9 reported the memory of all BOINC tasks together for each task; fixed with the new versions. Until then: raise "Use at most … % of memory" in BOINC's computing preferences |
 | GPU task fails, `nvidia-smi` missing or "no GPU" in the output | NVIDIA Container Toolkit / CDI specification missing or outdated (step 3) |
