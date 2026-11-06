@@ -1,0 +1,83 @@
+BOINC docker_wrapper: show the host's GPUs and the assigned one in the log.
+
+With several NVIDIA GPUs the task's log only showed the client's device number of the
+assigned GPU (CUDA order), which does not tell which card it is: nvidia-smi and the CDI
+device names use the PCI order, and the host page on the project web site shows only
+the most capable GPU with a count.
+For NVIDIA GPU tasks the wrapper now
+ - takes the PCI bus ID of the assigned GPU from the coprocessor info in init_data.xml
+   and logs it together with the device number,
+ - lists the host's GPUs (nvidia-smi index, name, PCI bus ID, memory) and marks the
+   assigned one,
+ - passes BOINC_GPU_DEVICE_NUM and BOINC_GPU_PCI_BUS_ID into the container, so the app
+   can report or check it (CUDA still only sees the assigned GPU via
+   CUDA_VISIBLE_DEVICES).
+Written for server_release/1.6/1.6.2 on top of 0002, 0004 to 0007, 0009 and 0010.
+
+diff --git a/samples/docker_wrapper/docker_wrapper.cpp b/samples/docker_wrapper/docker_wrapper.cpp
+index 1fd3f53..0ecf726 100644
+--- a/samples/docker_wrapper/docker_wrapper.cpp
++++ b/samples/docker_wrapper/docker_wrapper.cpp
+@@ -638,6 +638,41 @@ int get_container_state(int &state) {
+     return 0;
+ }
+ 
++// PCI bus ID ("00000000:01:00.0", as nvidia-smi shows it) of the NVIDIA GPU
++// the client assigned to this task, from the coprocessor info in init_data.xml;
++// empty if unknown. The client lists the PCI info of its usable GPUs in the
++// order of its device numbers (device_nums is not written to init_data.xml,
++// so it defaults to 0, 1, ...; GPUs excluded in cc_config.xml can shift this).
++//
++string assigned_gpu_pci_bus_id() {
++    COPROC_NVIDIA& nv = aid.host_info.coprocs.nvidia;
++    int k = nv.device_num_index(aid.gpu_device_num);
++    if (k < 0 || k >= MAX_COPROC_INSTANCES) return "";
++    PCI_INFO& pi = nv.pci_infos[k];
++    if (!pi.bus_id && !pi.device_id && !pi.domain_id && nv.count > 1) return "";
++    char buf[64];
++    snprintf(buf, sizeof(buf), "%08X:%02X:%02X.0", pi.domain_id, pi.bus_id, pi.device_id);
++    return buf;
++}
++
++// List the host's NVIDIA GPUs in the task's log and mark the assigned one.
++// All GPUs are visible in the container (nvidia-smi lists them), CUDA only
++// sees the assigned one.
++//
++void log_host_gpus(const string& assigned_pci) {
++    vector<string> out;
++    char cmd[] = "nvidia-smi --query-gpu=index,name,pci.bus_id,memory.total --format=csv,noheader 2>/dev/null";
++    if (run_command(cmd, out) || out.empty()) return;
++    wlog("NVIDIA GPUs on this host (nvidia-smi index, name, PCI bus ID, memory):\n");
++    for (string line: out) {
++        strip_whitespace(line);
++        if (line.empty()) continue;
++        bool mine = !assigned_pci.empty()
++            && strcasestr(line.c_str(), assigned_pci.c_str()) != NULL;
++        fprintf(stderr, "    %s%s\n", line.c_str(), mine ? "   <- assigned to this task" : "");
++    }
++}
++
+ int create_container() {
+     char cmd[1024];
+     char slot_cmd[256], project_cmd[256], buf[256];
+@@ -723,9 +758,18 @@ int create_container() {
+         if (aid.gpu_device_num >= 0 && !strncasecmp(aid.gpu_type, "nvidia", 6)) {
+             snprintf(buf, sizeof(buf), " -e CUDA_VISIBLE_DEVICES=%d", aid.gpu_device_num);
+             strcat(cmd, buf);
+-            wlog("GPU: %s device %d assigned by the client (CUDA_VISIBLE_DEVICES=%d)\n",
+-                aid.gpu_type, aid.gpu_device_num, aid.gpu_device_num
++            snprintf(buf, sizeof(buf), " -e BOINC_GPU_DEVICE_NUM=%d", aid.gpu_device_num);
++            strcat(cmd, buf);
++            string pci = assigned_gpu_pci_bus_id();
++            if (!pci.empty()) {
++                snprintf(buf, sizeof(buf), " -e BOINC_GPU_PCI_BUS_ID=%s", pci.c_str());
++                strcat(cmd, buf);
++            }
++            wlog("GPU: %s device %d assigned by the client, PCI %s (CUDA_VISIBLE_DEVICES=%d)\n",
++                aid.gpu_type, aid.gpu_device_num, pci.empty() ? "unknown" : pci.c_str(),
++                aid.gpu_device_num
+             );
++            log_host_gpus(pci);
+         }
+     }
+ 

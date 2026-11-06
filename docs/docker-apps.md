@@ -121,7 +121,14 @@ only see that GPU, as device 0. Apps must therefore not choose a GPU themselves 
 `--device 1` or `CUDA_VISIBLE_DEVICES` in `main.sh`). `nvidia-smi` ignores the variable
 and lists all GPUs; gpucheck reports the assigned device separately. Without the patch
 (app versions with an older wrapper) all tasks of such a host ran on the first GPU.
-Not yet tested on a real host with several GPUs.
+Tested with an RTX 4070 Ti and an RTX 5070 Ti in one host: both GPUs busy.
+
+The task's log shows which card a task got (patch `0011`): the assigned device number with
+its PCI bus ID, and a list of the host's GPUs from `nvidia-smi` with the assigned one
+marked. The container gets `BOINC_GPU_DEVICE_NUM` and `BOINC_GPU_PCI_BUS_ID` as environment
+variables. The host page on the project web site shows only the most capable GPU with a
+count (e.g. "[2] NVIDIA GeForce RTX 5070 Ti"): that is how the client reports GPUs of one
+vendor, not an error.
 
 ## CPU and GPU variants of an app
 

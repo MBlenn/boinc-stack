@@ -8,11 +8,17 @@
     echo "kernel: $(uname -r)"
     # GPU assigned by the BOINC client (set by the docker_wrapper; CUDA device number).
     # nvidia-smi below ignores it and lists all GPUs of the host.
-    echo "assigned GPU (CUDA_VISIBLE_DEVICES): ${CUDA_VISIBLE_DEVICES:-not set}"
+    echo "assigned GPU (CUDA_VISIBLE_DEVICES): ${CUDA_VISIBLE_DEVICES:-not set}, PCI ${BOINC_GPU_PCI_BUS_ID:-unknown}"
     if command -v nvidia-smi >/dev/null 2>&1; then
         echo "nvidia-smi: available"
-        nvidia-smi --query-gpu=name,driver_version,memory.total,compute_cap \
-            --format=csv,noheader 2>&1 || echo "nvidia-smi: query failed"
+        echo "GPUs (index, name, PCI bus ID, driver, memory, compute capability):"
+        nvidia-smi --query-gpu=index,name,pci.bus_id,driver_version,memory.total,compute_cap \
+            --format=csv,noheader 2>&1 | while IFS= read -r line; do
+            case "$line" in
+                *"${BOINC_GPU_PCI_BUS_ID:-no-pci-id}"*) echo "  $line   <- assigned to this task" ;;
+                *) echo "  $line" ;;
+            esac
+        done
         echo
         nvidia-smi 2>&1
     else
