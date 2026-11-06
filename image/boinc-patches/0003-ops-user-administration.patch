@@ -12,7 +12,7 @@ BOINC ops pages: clearer user administration.
 
 diff --git a/html/inc/ops_user.inc b/html/inc/ops_user.inc
 new file mode 100644
-index 0000000..09f2243
+index 0000000..1328e4f
 --- /dev/null
 +++ b/html/inc/ops_user.inc
 @@ -0,0 +1,150 @@
@@ -155,7 +155,7 @@ index 0000000..09f2243
 +        }
 +        $name = $host->domain_name ? ops_h($host->domain_name) : "(hidden)";
 +        table_row(
-+            "<a href=\"../show_host_detail.php?hostid=$host->id\">$host->id</a> $name",
++            "<a href=\"".url_base()."show_host_detail.php?hostid=$host->id\">$host->id</a> $name",
 +            ops_venue_name($host->venue),
 +            $used,
 +            $host->rpc_time ? time_str($host->rpc_time) : "never",
@@ -180,7 +180,7 @@ index 7bd6956..fc75af3 100644
          <li><a href=\"db_action.php?table=app\">Applications</a></li>
          <li><a href=\"db_form.php?table=app_version\">Application versions</a></li>
 diff --git a/html/ops/list_new_users.php b/html/ops/list_new_users.php
-index aedf6bf..57cc85c 100644
+index aedf6bf..c9567ac 100644
 --- a/html/ops/list_new_users.php
 +++ b/html/ops/list_new_users.php
 @@ -16,104 +16,117 @@
@@ -338,13 +338,13 @@ index aedf6bf..57cc85c 100644
 +    row2("Country", ops_h($user->country));
 +    if ($user->teamid) {
 +        $team = BoincTeam::lookup_id($user->teamid);
-+        row2("Team", $team ? "<a href=\"../team_display.php?teamid=$team->id\">".ops_h($team->name)."</a>" : $user->teamid);
++        row2("Team", $team ? "<a href=\"".url_base()."team_display.php?teamid=$team->id\">".ops_h($team->name)."</a>" : $user->teamid);
      }
 +    row2("Credit", format_credit($user->total_credit)." total, ".format_credit($user->expavg_credit)." recent average");
 +    row2("Special status", $roles ? ops_h($roles) : "none");
 +    row2("Links",
 +        "<a href=\"manage_user.php?userid=$user->id\">Manage user</a>
-+        | <a href=\"../show_user.php?userid=$user->id\">Public page</a>
++        | <a href=\"".url_base()."show_user.php?userid=$user->id\">Public page</a>
 +        | <a href=\"db_action.php?table=result&userid=$user->id&detail=low\">Results</a>"
 +    );
 +    end_table();
